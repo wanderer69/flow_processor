@@ -26,7 +26,6 @@ func NewTestClient(topicClient *externaltopic.ExternalTopic) *TestClient {
 }
 
 func (tc *TestClient) SetHandler(ctx context.Context, processName string, topicName string,
-
 	fn func(processName, processID string, topicName string, msgs []*entity.Message, vars []*entity.Variable) error) error {
 	return tc.topicClient.SetTopicHandler(ctx, processName, topicName, fn)
 }
