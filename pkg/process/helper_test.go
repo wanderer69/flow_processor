@@ -169,3 +169,169 @@ var process2 string = `<?xml version="1.0" encoding="UTF-8"?>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>`
+
+var processes1 string = `[
+   {
+     "Definition": {
+       "Name": "Definitions_036p21f",
+       "Version": "5.26.0",
+       "CamundaModelerID": ""
+     },
+     "Name": "Тест1",
+     "Version": "",
+     "CamundaModelerID": "Process_0ul3sfu",
+     "Elements": [
+       {
+         "uuid": "75a45461-38de-4de4-965f-6a894f0606be",
+         "camunda_modeler_id": "Activity_0ad6ndl",
+         "camunda_modeler_name": "процесс1",
+         "inputs": [
+           "486bbf0a-2191-40be-8130-150ad9474381"
+         ],
+         "outputs": [
+           "c7cf19df-ff9b-4d55-9af5-3bc14b046af0"
+         ],
+         "is_external_by_topic": true,
+         "topic_name": "ExecProcess1",
+         "element_type": "serviceTask"
+       },
+       {
+         "uuid": "bbdb813b-0daa-44c4-a122-76fcf5e8ec0b",
+         "camunda_modeler_id": "Activity_0l1xmnl",
+         "camunda_modeler_name": "процесс2",
+         "inputs": [
+           "375c67fc-37f2-4e92-a6bb-4aad2ab54546"
+         ],
+         "outputs": [
+           "6361f96e-f59f-4b08-b098-aff42426b74f"
+         ],
+         "is_external_by_topic": true,
+         "topic_name": "ExecProcess2",
+         "element_type": "serviceTask",
+         "output_vars": [
+           {
+             "Name": "Output_12k9dai",
+             "Type": "",
+             "Value": ""
+           }
+         ]
+       },
+       {
+         "uuid": "0143f0ec-84cc-4fa9-ab77-040857f7aa2f",
+         "camunda_modeler_id": "StartEvent_1",
+         "camunda_modeler_name": "StartEvent_1",
+         "outputs": [
+           "486bbf0a-2191-40be-8130-150ad9474381"
+         ],
+         "element_type": "startEvent"
+       },
+       {
+         "uuid": "5582d0a5-6947-4207-87ec-cbf61d9f6132",
+         "camunda_modeler_id": "Event_0xdunvq",
+         "inputs": [
+           "6361f96e-f59f-4b08-b098-aff42426b74f"
+         ],
+         "element_type": "endEvent"
+       },
+       {
+         "uuid": "58e9bc96-831c-4fb9-bb14-e909ac81d4ed",
+         "camunda_modeler_id": "Event_0usaqoj",
+         "camunda_modeler_name": "принять сообщение",
+         "outputs": [
+           "375c67fc-37f2-4e92-a6bb-4aad2ab54546"
+         ],
+         "input_messages": [
+           {
+             "Name": "Message_1kij1k3",
+             "Fields": null
+           }
+         ],
+         "is_recive_mail": true,
+         "element_type": "intermediateCatchEvent"
+       },
+       {
+         "uuid": "93d73a80-fe7d-44ff-8e05-df2969dee9a8",
+         "camunda_modeler_id": "Event_1mfzqut",
+         "camunda_modeler_name": "отправить сообщение",
+         "inputs": [
+           "c7cf19df-ff9b-4d55-9af5-3bc14b046af0"
+         ],
+         "output_messages": [
+           {
+             "Name": "Message_1kij1k3",
+             "Fields": [
+               {
+                 "Name": "Test1",
+                 "Type": "string",
+                 "Value": "test1_value"
+               },
+               {
+                 "Name": "Test2",
+                 "Type": "string",
+                 "Value": "value_test2"
+               },
+               {
+                 "Name": "Test3",
+                 "Type": "expresiion",
+                 "Value": "${1}"
+               }
+             ]
+           }
+         ],
+         "is_send_mail": true,
+         "is_external_by_topic": true,
+         "topic_name": "SendMessage",
+         "element_type": "intermediateThrowEvent"
+       },
+       {
+         "uuid": "486bbf0a-2191-40be-8130-150ad9474381",
+         "camunda_modeler_id": "Flow_1kcirj0",
+         "camunda_modeler_name": "Flow_1kcirj0",
+         "inputs": [
+           "0143f0ec-84cc-4fa9-ab77-040857f7aa2f"
+         ],
+         "outputs": [
+           "75a45461-38de-4de4-965f-6a894f0606be"
+         ],
+         "element_type": "flow"
+       },
+       {
+         "uuid": "c7cf19df-ff9b-4d55-9af5-3bc14b046af0",
+         "camunda_modeler_id": "Flow_0u3u62p",
+         "camunda_modeler_name": "Flow_0u3u62p",
+         "inputs": [
+           "75a45461-38de-4de4-965f-6a894f0606be"
+         ],
+         "outputs": [
+           "93d73a80-fe7d-44ff-8e05-df2969dee9a8"
+         ],
+         "element_type": "flow"
+       },
+       {
+         "uuid": "375c67fc-37f2-4e92-a6bb-4aad2ab54546",
+         "camunda_modeler_id": "Flow_11p59rc",
+         "camunda_modeler_name": "Flow_11p59rc",
+         "inputs": [
+           "58e9bc96-831c-4fb9-bb14-e909ac81d4ed"
+         ],
+         "outputs": [
+           "bbdb813b-0daa-44c4-a122-76fcf5e8ec0b"
+         ],
+         "element_type": "flow"
+       },
+       {
+         "uuid": "6361f96e-f59f-4b08-b098-aff42426b74f",
+         "camunda_modeler_id": "Flow_0109zje",
+         "camunda_modeler_name": "Flow_0109zje",
+         "inputs": [
+           "bbdb813b-0daa-44c4-a122-76fcf5e8ec0b"
+         ],
+         "outputs": [
+           "5582d0a5-6947-4207-87ec-cbf61d9f6132"
+         ],
+         "element_type": "flow"
+       }
+     ]
+   }
+ ]
+`

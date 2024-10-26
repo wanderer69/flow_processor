@@ -1202,6 +1202,7 @@ func (pe *ProcessExecutor) SendToMailBox(msg *ChannelMessage) error {
 		pe.fnDebug(ctx, fmt.Sprintf("process %v send email %v ", process.UUID, msg.CurrentElement.OutputMessages))
 	}
 
+	eventsByElement := make(map[string]*ChannelMessage)
 	// проходим по подписчикам и кидаем им в цикле сообщения
 	for i := range msg.CurrentElement.OutputMessages {
 		elements, ok := pe.elementByMessageName[msg.CurrentElement.OutputMessages[i].Name]
@@ -1210,17 +1211,25 @@ func (pe *ProcessExecutor) SendToMailBox(msg *ChannelMessage) error {
 				// надо проверить, что у элемента есть возможность получения
 				if elements[j].IsRecieveMail {
 					if pe.fnDebug != nil {
-						pe.fnDebug(ctx, fmt.Sprintf("process %v send mail msg %v to %v %v", process.UUID, msg.Messages, elements[j].ElementType, elements[j].CamundaModelerName))
+						pe.fnDebug(ctx, fmt.Sprintf("process %v send mail msg %v to %v '%v'", process.UUID, msg.CurrentElement.OutputMessages[i], elements[j].ElementType, elements[j].CamundaModelerName))
 					}
-					pe.fromMailBox <- &ChannelMessage{
-						CurrentElement: elements[j],
-						Messages:       msg.Messages,
-						Variables:      msg.Variables,
-						processID:      msg.processID,
+					v, ok := eventsByElement[elements[j].UUID]
+					if !ok {
+						v = &ChannelMessage{
+							CurrentElement: elements[j],
+							//Messages:       msg.CurrentElement.OutputMessages,
+							Variables: msg.Variables,
+							processID: msg.processID,
+						}
 					}
+					v.Messages = append(v.Messages, msg.CurrentElement.OutputMessages[i])
+					eventsByElement[elements[j].UUID] = v
 				}
 			}
 		}
+	}
+	for _, v := range eventsByElement {
+		pe.fromMailBox <- v
 	}
 	return nil
 }
@@ -1231,7 +1240,7 @@ func (pe *ProcessExecutor) RecieveFromTopic(msg *ChannelMessage) error {
 	currentElement := msg.CurrentElement
 
 	if pe.fnDebug != nil {
-		pe.fnDebug(ctx, fmt.Sprintf("process %v recive from topic %v ", process.UUID, msg.CurrentElement.TopicName))
+		pe.fnDebug(ctx, fmt.Sprintf("process %v recieve from topic %v ", process.UUID, msg.CurrentElement.TopicName))
 	}
 
 	for i := range msg.Messages {
@@ -1254,7 +1263,7 @@ func (pe *ProcessExecutor) RecieveFromTimer(msg *ChannelMessage) error {
 	process := pe.GetProcess(msg.processID)
 
 	if pe.fnDebug != nil {
-		pe.fnDebug(ctx, fmt.Sprintf("process %v recive from timer", process.UUID))
+		pe.fnDebug(ctx, fmt.Sprintf("process %v recieve from timer", process.UUID))
 	}
 
 	currentElement := msg.CurrentElement
@@ -1280,7 +1289,7 @@ func (pe *ProcessExecutor) RecieveFromMail(msg *ChannelMessage) error {
 	currentElement := msg.CurrentElement
 
 	if pe.fnDebug != nil {
-		pe.fnDebug(ctx, fmt.Sprintf("process %v recieve from mail", process.UUID))
+		pe.fnDebug(ctx, fmt.Sprintf("process %v recieve mail", process.UUID))
 	}
 
 	for i := range msg.Messages {

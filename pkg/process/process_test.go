@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -1408,6 +1409,77 @@ func TestProcessSimpleV(t *testing.T) {
 		require.Equal(t, currentProcessName, currentProcessName)
 		require.Equal(t, topic1, topicName)
 		require.NoError(t, testClient.topicClient.CompleteTopic(ctx, processName, processId, topic1, []*entity.Message{msg1}, []*entity.Variable{var1}))
+		return nil
+	})
+
+	msg2 := &entity.Message{
+		Name: "msg2",
+		Fields: []*entity.Field{
+			{
+				Name:  "field2",
+				Type:  "string",
+				Value: "test2",
+			},
+		},
+	}
+	var2 := &entity.Variable{
+		Name:  "var2",
+		Type:  "string",
+		Value: "var_value2",
+	}
+
+	testClient.topicClient.SetTopicHandler(ctx, currentProcessName, topic2, func(processName, processId, topicName string, msgs []*entity.Message, vars []*entity.Variable) error {
+		require.Equal(t, *currentProcessId, processId)
+		require.Equal(t, currentProcessName, currentProcessName)
+		require.Equal(t, topic2, topicName)
+		testClient.topicClient.CompleteTopic(ctx, processName, processId, topicName, []*entity.Message{msg2}, []*entity.Variable{var2})
+		userProcess <- true
+		return nil
+	})
+
+	processId, err := pe.StartProcess(ctx, nil)
+	require.NoError(t, err)
+	currentProcessId = &processId
+	<-userProcess
+	/*
+		time.Sleep(time.Millisecond * 20)
+		require.NoError(t, externalActivationClient.CompleteActivation(ctx, currentProcessName, *currentProcessId, e3.CamundaModelerName, nil, nil))
+	*/
+	<-pe.Stopped
+}
+
+func TestProcessSimpleVI(t *testing.T) {
+	ctx := context.Background()
+
+	topicClient := externaltopic.NewExternalTopic()
+	timerClient := timer.NewTimer()
+	externalActivationClient := externalactivation.NewExternalActivation()
+	testClient := NewTestClient(topicClient)
+
+	currentProcessName := "Тест1"
+	topic1 := "ExecProcess1"
+	topic2 := "ExecProcess2"
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient)
+
+	var ps []*entity.Process
+
+	require.NoError(t, json.Unmarshal([]byte(processes1), &ps))
+
+	require.NoError(t, pe.SetProcess(ctx, ps[0]))
+	var currentProcessId *string
+
+	userProcess := make(chan bool)
+
+	pe.SetLogger(ctx, func(ctx context.Context, msg string) error {
+		fmt.Printf("%v\r\n", msg)
+		return nil
+	})
+
+	testClient.topicClient.SetTopicHandler(ctx, currentProcessName, topic1, func(processName, processId, topicName string, msgs []*entity.Message, vars []*entity.Variable) error {
+		require.Equal(t, *currentProcessId, processId)
+		require.Equal(t, currentProcessName, currentProcessName)
+		require.Equal(t, topic1, topicName)
+		require.NoError(t, testClient.topicClient.CompleteTopic(ctx, processName, processId, topic1, []*entity.Message{}, []*entity.Variable{}))
 		return nil
 	})
 
