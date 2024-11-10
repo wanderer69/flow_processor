@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/wanderer69/flow_processor/pkg/entity"
+	"github.com/wanderer69/flow_processor/pkg/process"
 )
 
 type ExternalTopic interface {
@@ -16,10 +17,13 @@ type ExternalTopic interface {
 
 type ExternalActivation interface {
 	Init(ctx context.Context, processName string, taskName string) error
-	SetActivationResponse(ctx context.Context, processName, taskName string, fn func(processName, processId, taskName string, msgs []*entity.Message, vars []*entity.Variable) error) error
+	//SetActivationResponse(ctx context.Context, processName, taskName string, fn func(processName, processId, taskName string, msgs []*entity.Message, vars []*entity.Variable) error) error
+	CompleteActivation(ctx context.Context, processName, processID, taskName string, msgs []*entity.Message, vars []*entity.Variable) error
 }
 
 type ProcessExecutor interface {
-	StartProcess(ctx context.Context, processName string, vars []*entity.Variable) (string, error)
+	StartProcess(ctx context.Context, processName string, vars []*entity.Variable) (*process.Process, error)
 	AddProcess(ctx context.Context, process *entity.Process) error
+	ExternalSendToMailBox(processName, processID, topicName string, msgs []*entity.Message) error
+	GetStopped() chan *process.FinishedProcessData
 }

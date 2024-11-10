@@ -15,6 +15,7 @@ import (
 	"github.com/wanderer69/flow_processor/pkg/entity"
 	internalformat "github.com/wanderer69/flow_processor/pkg/internal_format"
 	"github.com/wanderer69/flow_processor/pkg/loader"
+	"github.com/wanderer69/flow_processor/pkg/process"
 	pb "github.com/wanderer69/flow_processor/pkg/proto"
 )
 
@@ -27,22 +28,6 @@ type Handler struct {
 		messages []*entity.Message,
 		variables []*entity.Variable,
 	) error
-	/*
-		sendConnectToProcessResponse func(
-			ctx context.Context,
-			processName string,
-			processID string,
-			result string,
-			err string,
-		) error
-		sendStartProcessResponse func(
-			ctx context.Context,
-			processName string,
-			processID string,
-			result string,
-			err string,
-		) error
-	*/
 	handlerID string
 }
 
@@ -53,6 +38,7 @@ type Server struct {
 	processExecutor                   ProcessExecutor
 	handlersByProcessNameAndTopicName map[string]*Handler
 	idCounter                         int32
+	processByProcessID                map[string]*process.Process
 }
 
 func NewServer(
@@ -65,6 +51,7 @@ func NewServer(
 		externalActivationClient:          externalActivationClient,
 		processExecutor:                   processExecutor,
 		handlersByProcessNameAndTopicName: make(map[string]*Handler),
+		processByProcessID:                make(map[string]*process.Process),
 	}
 }
 
@@ -179,7 +166,6 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 		return nil
 	}
 
-	//state := 0
 	for {
 		// exit if context is done
 		// or continue
@@ -188,6 +174,34 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 			err := ctx.Err()
 			logger.Info("Connect: done", zap.Error(err))
 			return err
+		case finishedProcessData := <-s.processExecutor.GetStopped():
+			process, ok := s.processByProcessID[finishedProcessData.ProcessID]
+			if !ok {
+				logger.Info("Connect: handler not found", zap.Any("finished_process_data", finishedProcessData))
+				continue
+			}
+			vars := []*pb.Variable{}
+			for i := range process.Context.VariablesByName {
+				v := &pb.Variable{
+					Name:  process.Context.VariablesByName[i].Name,
+					Type:  process.Context.VariablesByName[i].Type,
+					Value: process.Context.VariablesByName[i].Value,
+				}
+				vars = append(vars, v)
+			}
+
+			resp := pb.Response{
+				Id:  s.idCounter,
+				Msg: "",
+				ProcessFinished: &pb.ProcessFinished{
+					ProcessName: "",
+					ProcessId:   process.UUID,
+					Variables:   vars,
+				},
+			}
+			if err := srv.Send(&resp); err != nil {
+				logger.Info("Connect: send failed", zap.Error(err))
+			}
 		default:
 		}
 
@@ -209,6 +223,13 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 			}
 		*/
 		if req.StartProcessRequest != nil {
+			errorResult := ""
+			result := "Ok"
+			process, err := s.processExecutor.StartProcess(ctx, req.StartProcessRequest.ProcessName, nil)
+			if err != nil {
+				result = "Error"
+				errorResult = fmt.Sprintf("failed start process %v", err)
+			}
 			// подключаем обработчики
 			handler, ok := s.handlersByProcessNameAndTopicName[req.StartProcessRequest.ProcessName]
 			if !ok {
@@ -216,14 +237,34 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 				continue
 			}
 			handler.sendExecuteTopic = sendExecuteTopic
+			s.processByProcessID[process.UUID] = process
+			go func() {
+				if <-process.Stopped {
+					vars := []*pb.Variable{}
+					for i := range process.Context.VariablesByName {
+						v := &pb.Variable{
+							Name:  process.Context.VariablesByName[i].Name,
+							Type:  process.Context.VariablesByName[i].Type,
+							Value: process.Context.VariablesByName[i].Value,
+						}
+						vars = append(vars, v)
+					}
 
-			errorResult := ""
-			result := "Ok"
-			processID, err := s.processExecutor.StartProcess(ctx, req.StartProcessRequest.ProcessName, nil)
-			if err != nil {
-				result = "Error"
-				errorResult = fmt.Sprintf("failed start process %v", err)
-			}
+					resp := pb.Response{
+						Id:  s.idCounter,
+						Msg: "",
+						ProcessFinished: &pb.ProcessFinished{
+							ProcessName: req.StartProcessRequest.ProcessName,
+							ProcessId:   process.UUID,
+							Variables:   vars,
+						},
+					}
+					if err := srv.Send(&resp); err != nil {
+						logger.Info("Connect: send failed", zap.Error(err))
+					}
+				}
+			}()
+
 			s.idCounter += 1
 
 			resp := pb.Response{
@@ -231,13 +272,13 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 				Msg: "",
 				StartProcessResponse: &pb.StartProcessResponse{
 					ProcessName: req.StartProcessRequest.ProcessName,
-					ProcessId:   processID,
+					ProcessId:   process.UUID,
 					Result:      result,
 					Error:       &errorResult,
 				},
 			}
 			if err := srv.Send(&resp); err != nil {
-				logger.Info("Connect: done", zap.Error(err))
+				logger.Info("Connect: send failed", zap.Error(err))
 				return err
 			}
 		}
@@ -290,36 +331,38 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 				}
 				msgs = append(msgs, msg)
 			}
+			s.processExecutor.ExternalSendToMailBox(req.SendMessage.ProcessName, req.SendMessage.ProcessId, req.SendMessage.TopicName, msgs)
+		}
+
+		if req.ExternalActivation != nil {
+			msgs := []*entity.Message{}
+			for i := range req.ExternalActivation.Messages {
+				flds := []*entity.Field{}
+				for j := range req.ExternalActivation.Messages[i].Fields {
+					fld := &entity.Field{
+						Name:  req.ExternalActivation.Messages[i].Fields[j].Name,
+						Type:  req.ExternalActivation.Messages[i].Fields[j].Type,
+						Value: req.ExternalActivation.Messages[i].Fields[j].Value,
+					}
+					flds = append(flds, fld)
+				}
+				msg := &entity.Message{
+					Name:   req.ExternalActivation.Messages[i].Name,
+					Fields: flds,
+				}
+				msgs = append(msgs, msg)
+			}
 			vars := []*entity.Variable{}
-			for i := range req.SendMessage.Variables {
+			for i := range req.ExternalActivation.Variables {
 				v := &entity.Variable{
-					Name:  req.SendMessage.Variables[i].Name,
-					Type:  req.SendMessage.Variables[i].Type,
-					Value: req.SendMessage.Variables[i].Value,
+					Name:  req.ExternalActivation.Variables[i].Name,
+					Type:  req.ExternalActivation.Variables[i].Type,
+					Value: req.ExternalActivation.Variables[i].Value,
 				}
 				vars = append(vars, v)
 			}
-			s.topicClient.CompleteTopic(ctx, req.SendMessage.ProcessName, req.SendMessage.ProcessId, req.SendMessage.TopicName,
-				msgs, vars)
+			s.externalActivationClient.CompleteActivation(ctx, req.ExternalActivation.ProcessName, req.ExternalActivation.ProcessId, req.ExternalActivation.TaskName, msgs, vars)
 		}
-
-		/*
-			if s.fn != nil {
-				// обработка данных стрима
-				id, msg, err := s.fn(ctx, req.Id, req.Msg, send)
-				if err != nil {
-					logger.Info("Connect: failed recieve", zap.Error(err))
-					continue
-				}
-				if len(msg) > 0 {
-					err = send(id, msg)
-					if err != nil {
-						logger.Info("Connect: failed recieve", zap.Error(err))
-						continue
-					}
-				}
-			}
-		*/
 		time.Sleep(time.Duration(1) * time.Millisecond)
 	}
 }

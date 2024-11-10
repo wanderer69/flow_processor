@@ -206,9 +206,9 @@ func TestProcessSimpleI(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
+	process, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
-	currentProcessId = &processId
+	currentProcessId = &process.UUID
 
 	<-pe.Stopped
 }
@@ -401,9 +401,9 @@ func TestProcessSimpleII(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
+	process, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
-	currentProcessId = &processId
+	currentProcessId = &process.UUID
 
 	<-userProcess
 	time.Sleep(time.Millisecond * 20)
@@ -741,9 +741,9 @@ func TestProcessSimpleIII(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
+	process, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
-	currentProcessId = &processId
+	currentProcessId = &process.UUID
 
 	<-userProcess
 	time.Sleep(time.Millisecond * 20)
@@ -755,9 +755,9 @@ func TestProcessSimpleIII(t *testing.T) {
 	var2.Type = "boolean"
 	var2.Value = "true"
 
-	processId, err = pe.StartProcess(ctx, currentProcessName, nil)
+	process, err = pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
-	currentProcessId = &processId
+	currentProcessId = &process.UUID
 
 	<-userProcess
 	time.Sleep(time.Millisecond * 20)
@@ -1095,9 +1095,9 @@ func TestProcessSimpleIV(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
+	process, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
-	currentProcessId = &processId
+	currentProcessId = &process.UUID
 
 	<-userProcess
 	time.Sleep(time.Millisecond * 20)
@@ -1437,9 +1437,9 @@ func TestProcessSimpleV(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
+	process, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
-	currentProcessId = &processId
+	currentProcessId = &process.UUID
 	<-userProcess
 	/*
 		time.Sleep(time.Millisecond * 20)
@@ -1508,9 +1508,9 @@ func TestProcessSimpleVI(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
+	process, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
-	currentProcessId = &processId
+	currentProcessId = &process.UUID
 	<-userProcess
 	/*
 		time.Sleep(time.Millisecond * 20)
