@@ -33,6 +33,8 @@ type Process struct {
 
 	Context *entity.Context
 
+	Stopped chan bool
+
 	mu                                          *sync.Mutex
 	processElementDataByProcessIDAndElementUUID map[string]*ProcessElementData
 }
@@ -40,6 +42,7 @@ type Process struct {
 func NewProcess(context *entity.Context) *Process {
 	return &Process{
 		UUID:    uuid.NewString(),
+		Stopped: make(chan bool),
 		mu:      &sync.Mutex{},
 		Context: context,
 		processElementDataByProcessIDAndElementUUID: make(map[string]*ProcessElementData),
@@ -60,6 +63,10 @@ func (p *Process) GetData(elementUUID string) (*ProcessElementData, bool) {
 	return ped, ok
 }
 
+type FinishedProcessData struct {
+	ProcessID string
+	Error     string
+}
 type ProcessExecutor struct {
 	UUID string
 	//	process               *entity.Process
@@ -79,8 +86,7 @@ type ProcessExecutor struct {
 	fromTimer   chan *ChannelMessage
 	fromMailBox chan *ChannelMessage
 
-	//	broker  func()
-	Stopped chan bool
+	Stopped chan *FinishedProcessData
 
 	elementByTopics             map[string]*entity.Element
 	elementByTimerID            map[string]*entity.Element
@@ -124,7 +130,7 @@ func NewProcessExecutor(
 		UUID:               uuid.NewString(),
 		internalActivation: make(chan *ChannelMessage, 10),
 		externalActivation: make(chan *ChannelMessage),
-		Stopped:            make(chan bool),
+		Stopped:            make(chan *FinishedProcessData),
 		activateTopic:      make(chan *ChannelMessage),
 		activateTimer:      make(chan *ChannelMessage),
 		activateMailBox:    make(chan *ChannelMessage),
@@ -233,53 +239,85 @@ func NewProcessExecutor(
 							go func() {
 								err := pe.NextProcessStep(ctx, msg.msg, false)
 								if err != nil {
-									fmt.Printf("failed call NextProcessStep: %v\r\n", err)
-									pe.Stopped <- true
+									errorData := fmt.Sprintf("failed call NextProcessStep: %v", err)
+									fmt.Printf("%v\r\n", errorData)
+									pe.Stopped <- &FinishedProcessData{
+										ProcessID: msg.msg.processID,
+										Error:     errorData,
+									}
 								}
 							}()
 						case eventExternal:
 							go func() {
 								err := pe.NextProcessStep(ctx, msg.msg, true)
 								if err != nil {
-									fmt.Printf("failed call NextProcessStep: %v\r\n", err)
-									pe.Stopped <- true
+									errorData := fmt.Sprintf("failed call NextProcessStep: %v", err)
+									fmt.Printf("%v\r\n", errorData)
+									pe.Stopped <- &FinishedProcessData{
+										ProcessID: msg.msg.processID,
+										Error:     errorData,
+									}
 								}
 							}()
 						case eventActivateTopic:
 							err := pe.SendToExternalTopic(msg.msg)
 							if err != nil {
-								fmt.Printf("failed call SendToExternalTopic: %v\r\n", err)
-								pe.Stopped <- true
+								errorData := fmt.Sprintf("failed call SendToExternalTopic: %v", err)
+								fmt.Printf("%v\r\n", errorData)
+								pe.Stopped <- &FinishedProcessData{
+									ProcessID: msg.msg.processID,
+									Error:     errorData,
+								}
 							}
 						case eventActivateTimer:
 							err := pe.ActivateTimer(msg.msg)
 							if err != nil {
-								fmt.Printf("failed call ActivateTimer: %v\r\n", err)
-								pe.Stopped <- true
+								errorData := fmt.Sprintf("failed call ActivateTimer: %v", err)
+								fmt.Printf("%v\r\n", errorData)
+								pe.Stopped <- &FinishedProcessData{
+									ProcessID: msg.msg.processID,
+									Error:     errorData,
+								}
 							}
 						case eventFromTopic:
 							err := pe.RecieveFromTopic(msg.msg)
 							if err != nil {
-								fmt.Printf("failed call RecieveFromTopic: %v\r\n", err)
-								pe.Stopped <- true
+								errorData := fmt.Sprintf("failed call RecieveFromTopic: %v", err)
+								fmt.Printf("%v\r\n", errorData)
+								pe.Stopped <- &FinishedProcessData{
+									ProcessID: msg.msg.processID,
+									Error:     errorData,
+								}
 							}
 						case eventFromTimer:
 							err := pe.RecieveFromTimer(msg.msg)
 							if err != nil {
-								fmt.Printf("failed call RecieveFromTimer: %v\r\n", err)
-								pe.Stopped <- true
+								errorData := fmt.Sprintf("failed call RecieveFromTimer: %v", err)
+								fmt.Printf("%v\r\n", errorData)
+								pe.Stopped <- &FinishedProcessData{
+									ProcessID: msg.msg.processID,
+									Error:     errorData,
+								}
 							}
 						case eventSendToMailBox:
 							err := pe.SendToMailBox(msg.msg)
 							if err != nil {
-								fmt.Printf("failed call SendToMailBox: %v\r\n", err)
-								pe.Stopped <- true
+								errorData := fmt.Sprintf("failed call SendToMailBox: %v", err)
+								fmt.Printf("%v\r\n", errorData)
+								pe.Stopped <- &FinishedProcessData{
+									ProcessID: msg.msg.processID,
+									Error:     errorData,
+								}
 							}
 						case eventFromMailBox:
 							err := pe.RecieveFromMail(msg.msg)
 							if err != nil {
-								fmt.Printf("failed call RecieveFromMail: %v\r\n", err)
-								pe.Stopped <- true
+								errorData := fmt.Sprintf("failed call RecieveFromMail: %v", err)
+								fmt.Printf("%v\r\n", errorData)
+								pe.Stopped <- &FinishedProcessData{
+									ProcessID: msg.msg.processID,
+									Error:     errorData,
+								}
 							}
 						}
 					}
@@ -287,7 +325,6 @@ func NewProcessExecutor(
 			}
 		}()
 	}
-	//pe.broker = broker
 	go broker()
 
 	return pe
@@ -296,6 +333,10 @@ func NewProcessExecutor(
 func (pe *ProcessExecutor) SetLogger(ctx context.Context, fn func(ctx context.Context, msg string) error) error {
 	pe.fnDebug = fn
 	return nil
+}
+
+func (pe *ProcessExecutor) GetStopped() chan *FinishedProcessData {
+	return pe.Stopped
 }
 
 func (pe *ProcessExecutor) CheckElement(element *entity.Element) error {
@@ -648,10 +689,10 @@ func (pe *ProcessExecutor) AddProcess(ctx context.Context, process *entity.Proce
 	return nil
 }
 
-func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string, vars []*entity.Variable) (string, error) {
+func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string, vars []*entity.Variable) (*Process, error) {
 	currentProcess, ok := pe.processByProcessName[processName]
 	if !ok {
-		return "", fmt.Errorf("process %v not found", processName)
+		return nil, fmt.Errorf("process %v not found", processName)
 	}
 	// ищем элемент у которого есть только выходы
 	var currentElements []*entity.Element
@@ -661,7 +702,7 @@ func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string,
 		}
 	}
 	if currentElements == nil {
-		return "", fmt.Errorf("start element not found")
+		return nil, fmt.Errorf("start element not found")
 	}
 
 	pContext := &entity.Context{
@@ -686,7 +727,7 @@ func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string,
 		}
 	}
 
-	return process.UUID, nil
+	return process, nil
 }
 
 func (pe *ProcessExecutor) GetElementByUUID(uuid string) *entity.Element {
@@ -1104,7 +1145,11 @@ func (pe *ProcessExecutor) FinishExecuteElement(msg *ChannelMessage) ([]*entity.
 	if len(msg.CurrentElement.OutputsElementID) == 0 {
 		// останавливаем исполнение
 		msg.CurrentElement = nil
-		pe.Stopped <- true
+		pe.Stopped <- &FinishedProcessData{
+			ProcessID: process.UUID,
+		}
+
+		process.Stopped <- true
 		return nil, false, nil
 	}
 
@@ -1229,9 +1274,8 @@ func (pe *ProcessExecutor) SendToMailBox(msg *ChannelMessage) error {
 					if !ok {
 						v = &ChannelMessage{
 							CurrentElement: elements[j],
-							//Messages:       msg.CurrentElement.OutputMessages,
-							Variables: msg.Variables,
-							processID: msg.processID,
+							Variables:      msg.Variables,
+							processID:      msg.processID,
 						}
 					}
 					v.Messages = append(v.Messages, msg.CurrentElement.OutputMessages[i])
@@ -1327,5 +1371,45 @@ func (pe *ProcessExecutor) Set(ctx context.Context, processId string, mailBoxID 
 
 func (pe *ProcessExecutor) TimerResponse(ctx context.Context, fn func(processId, mailBoxID, msgs *entity.Message) error) error {
 
+	return nil
+}
+
+func (pe *ProcessExecutor) ExternalSendToMailBox(processName, processID, topicName string, msgs []*entity.Message) error {
+	ctx := context.Background()
+	process := pe.GetProcess(processID)
+
+	if pe.fnDebug != nil {
+		pe.fnDebug(ctx, fmt.Sprintf("process %v send email %v ", process.UUID, msgs))
+	}
+
+	eventsByElement := make(map[string]*ChannelMessage)
+	// проходим по подписчикам и кидаем им в цикле сообщения
+	for i := range msgs {
+		elements, ok := pe.elementByMessageName[msgs[i].Name]
+		if ok {
+			for j := range elements {
+				// надо проверить, что у элемента есть возможность получения
+				if elements[j].IsRecieveMail {
+					if pe.fnDebug != nil {
+						pe.fnDebug(ctx, fmt.Sprintf("process %v send mail msg %v to %v '%v'", process.UUID, msgs[i], elements[j].ElementType, elements[j].CamundaModelerName))
+					}
+					v, ok := eventsByElement[elements[j].UUID]
+					if !ok {
+						v = &ChannelMessage{
+							CurrentElement: elements[j],
+							//Messages:       msg.CurrentElement.OutputMessages,
+							//Variables: msg.Variables,
+							processID: processID,
+						}
+					}
+					v.Messages = append(v.Messages, msgs[i])
+					eventsByElement[elements[j].UUID] = v
+				}
+			}
+		}
+	}
+	for _, v := range eventsByElement {
+		pe.fromMailBox <- v
+	}
 	return nil
 }

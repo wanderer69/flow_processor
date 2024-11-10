@@ -16,32 +16,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-/*
-type Callback func(
-	ctx context.Context,
-	id int32,
-	recievedMsg string,
-	processName string,
-	processID string,
-	topicName string,
-	messages []*entity.Message,
-	variables []*entity.Variable,
-	sendMsg func(id int32, msg string, processName, processID, topicName string,
-		messages []*entity.Message, variables []*entity.Variable, result string, err string) error) (int32, string, string, string, string, string, []*entity.Message, []*entity.Variable, error)
-*/
-/*
-type Callback func(
-	ctx context.Context,
-	id int32,
-	recievedMsg string,
-	processName string,
-	processID string,
-	topicName string,
-	messages []*entity.Message,
-	variables []*entity.Variable,
-) (int32, string, string, string, string, string, []*entity.Message, []*entity.Variable, error)
-*/
-
 type Callback func(
 	ctx context.Context,
 	processName string,
@@ -56,16 +30,19 @@ type Args struct {
 	ProcessName string
 	ProcessID   string
 	TopicName   string
+	TaskName    string
 	Messages    []*entity.Message
 	Variables   []*entity.Variable
 }
 
 const (
-	CTStartProcess     string = "start process"
-	CTConnectToProcess string = "connect to process"
-	CTTopicExecute     string = "topic execute"
-	CTTopicComplete    string = "topic complete"
-	CTSendMessage      string = "send message"
+	CTStartProcess       string = "start process"
+	CTConnectToProcess   string = "connect to process"
+	CTTopicExecute       string = "topic execute"
+	CTTopicComplete      string = "topic complete"
+	CTSendMessage        string = "send message"
+	CTExternalActivation string = "external activation"
+	CTProcessFinished    string = "process finished"
 )
 
 type Call struct {
@@ -77,6 +54,8 @@ type Call struct {
 type ProcessorClient struct {
 	port                                    int
 	fnTopicExecuteByProcessNameAndTopicName map[string]Callback
+	fnProcessFinishedByProcessName          map[string]Callback
+	fnProcessFinishedByProcessID            map[string]Callback
 	processConnector                        map[string]string
 	idCounter                               int32
 
@@ -100,6 +79,8 @@ func NewProcessorClient(port int) *ProcessorClient {
 	result := &ProcessorClient{
 		port:                                    port,
 		fnTopicExecuteByProcessNameAndTopicName: make(map[string]Callback),
+		fnProcessFinishedByProcessName:          make(map[string]Callback),
+		fnProcessFinishedByProcessID:            make(map[string]Callback),
 		mu:                                      &sync.Mutex{},
 		toProcess:                               make(chan *Call),
 		startProcessResponse:                    make(chan *pb.Response),
@@ -256,6 +237,43 @@ func NewProcessorClient(port int) *ProcessorClient {
 					},
 				}
 				result.send <- msg
+			case CTExternalActivation:
+				msgs := []*pb.Message{}
+				for i := range call.Args.Messages {
+					fields := []*pb.Field{}
+					for j := range call.Args.Messages[i].Fields {
+						field := &pb.Field{
+							Name:  call.Args.Messages[i].Fields[j].Name,
+							Type:  call.Args.Messages[i].Fields[j].Type,
+							Value: call.Args.Messages[i].Fields[j].Value,
+						}
+						fields = append(fields, field)
+					}
+					msg := &pb.Message{
+						Name:   call.Args.Messages[i].Name,
+						Fields: fields,
+					}
+					msgs = append(msgs, msg)
+				}
+				vars := []*pb.Variable{}
+				for i := range call.Args.Variables {
+					varl := &pb.Variable{
+						Name:  call.Args.Variables[i].Name,
+						Type:  call.Args.Variables[i].Type,
+						Value: call.Args.Variables[i].Value,
+					}
+					vars = append(vars, varl)
+				}
+				msg := &pb.Request{
+					ExternalActivation: &pb.ExternalActivation{
+						ProcessName: call.Args.ProcessName,
+						ProcessId:   call.Args.ProcessID,
+						TaskName:    call.Args.TaskName,
+						Messages:    msgs,
+						Variables:   vars,
+					},
+				}
+				result.send <- msg
 			case CTTopicExecute:
 				fn, ok := result.fnTopicExecuteByProcessNameAndTopicName[call.Args.ProcessName+call.Args.TopicName]
 				if !ok {
@@ -268,14 +286,17 @@ func NewProcessorClient(port int) *ProcessorClient {
 						fmt.Printf("failed call topic handler")
 					}
 				}()
-				/*
-					msg := &pb.Request{
-						StartProcessRequest: &pb.StartProcessRequest{
-							ProcessName: call.Args.ProcessName,
-						},
-					}
-					result.send <- msg
-				*/
+			case CTProcessFinished:
+				fn, ok := result.fnProcessFinishedByProcessID[call.Args.ProcessID]
+				if ok {
+					go func() {
+						ctx := context.Background()
+						err := fn(ctx, call.Args.ProcessName, call.Args.ProcessID, call.Args.TopicName, call.Args.Messages, call.Args.Variables)
+						if err != nil {
+							fmt.Printf("failed call topic handler")
+						}
+					}()
+				}
 			}
 		}
 	}()
@@ -286,7 +307,6 @@ func NewProcessorClient(port int) *ProcessorClient {
 func (pc ProcessorClient) SetCallback(ctx context.Context, processName string, topicName string, fn Callback) error {
 	logger := zap.L()
 	logger.Info("SetCallback")
-	// 50005
 	conn, err := grpc.NewClient(fmt.Sprintf(":%d", pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logger.Error("can not connect with server", zap.Error(err))
@@ -313,7 +333,6 @@ func (pc ProcessorClient) SetCallback(ctx context.Context, processName string, t
 func (pc ProcessorClient) AddProcess(ctx context.Context, processRaw string) error {
 	logger := zap.L()
 	logger.Info("StoreProcess")
-	// 50005
 	conn, err := grpc.NewClient(fmt.Sprintf(":%d", pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logger.Error("can not connect with server", zap.Error(err))
@@ -360,7 +379,10 @@ func (pc ProcessorClient) StartProcess(ctx context.Context, processName string) 
 			break
 		}
 	}
-
+	handler, ok := pc.fnProcessFinishedByProcessName[processName]
+	if ok {
+		pc.fnProcessFinishedByProcessID[processID] = handler
+	}
 	return processID, nil
 }
 
@@ -376,7 +398,6 @@ func (pc ProcessorClient) ConnectToProcess(ctx context.Context, processName stri
 		},
 	}
 
-	//processID := ""
 	ticker := time.NewTicker(pc.durationWaitAnswer)
 	isComplete := false
 	for {
@@ -427,10 +448,32 @@ func (pc ProcessorClient) SendMessage(ctx context.Context, processName string, p
 	}
 }
 
+func (pc ProcessorClient) ExternalActivation(ctx context.Context, processName string, processID string, taskName string, msgs []*entity.Message, vars []*entity.Variable) {
+	logger := zap.L()
+	logger.Info("ExternalActivation")
+
+	pc.toProcess <- &Call{
+		CallType: CTExternalActivation,
+		Args: Args{
+			ProcessName: processName,
+			ProcessID:   processID,
+			TaskName:    taskName,
+			Messages:    msgs,
+			Variables:   vars,
+		},
+	}
+}
+
+func (pc ProcessorClient) SetProcessFinished(ctx context.Context, processName string, fn Callback) error {
+	logger := zap.L()
+	logger.Info("SetProcessFinished")
+	pc.fnProcessFinishedByProcessName[processName] = fn
+	return nil
+}
+
 func (pc *ProcessorClient) Connect(processName string, connected chan bool) error {
 	logger := zap.L()
 	logger.Info("Connect")
-	// 50005
 	conn, err := grpc.NewClient(fmt.Sprintf(":%d", pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logger.Error("can not connect with server", zap.Error(err))
@@ -523,6 +566,26 @@ func (pc *ProcessorClient) Connect(processName string, connected chan bool) erro
 						ProcessID:   resp.TopicExecute.ProcessId,
 						TopicName:   resp.TopicExecute.TopicName,
 						Messages:    msgs,
+						Variables:   vars,
+					},
+				}
+			}
+			if resp.ProcessFinished != nil {
+				vars := []*entity.Variable{}
+				for i := range resp.ProcessFinished.Variables {
+					varl := &entity.Variable{
+						Name:  resp.ProcessFinished.Variables[i].Name,
+						Type:  resp.ProcessFinished.Variables[i].Type,
+						Value: resp.ProcessFinished.Variables[i].Value,
+					}
+					vars = append(vars, varl)
+				}
+
+				pc.toProcess <- &Call{
+					CallType: CTProcessFinished,
+					Args: Args{
+						ProcessName: resp.ProcessFinished.ProcessName,
+						ProcessID:   resp.ProcessFinished.ProcessId,
 						Variables:   vars,
 					},
 				}
