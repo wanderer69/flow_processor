@@ -28,7 +28,8 @@ type ProcessElementData struct {
 }
 
 type Process struct {
-	UUID string
+	UUID    string
+	process *entity.Process
 
 	Context *entity.Context
 
@@ -60,8 +61,10 @@ func (p *Process) GetData(elementUUID string) (*ProcessElementData, bool) {
 }
 
 type ProcessExecutor struct {
-	UUID                  string
-	process               *entity.Process
+	UUID string
+	//	process               *entity.Process
+	processByProcessName map[string]*entity.Process
+
 	processes             []*Process
 	executedProcessByUUID map[string]*Process
 
@@ -76,7 +79,7 @@ type ProcessExecutor struct {
 	fromTimer   chan *ChannelMessage
 	fromMailBox chan *ChannelMessage
 
-	broker  func()
+	//	broker  func()
 	Stopped chan bool
 
 	elementByTopics             map[string]*entity.Element
@@ -143,6 +146,7 @@ func NewProcessExecutor(
 		externalTopic:           externalTopic,
 		timer:                   timer,
 		externalActivationAgent: externalActivationAgent,
+		processByProcessName:    make(map[string]*entity.Process),
 	}
 	broker := func() {
 		muEventType := sync.Mutex{}
@@ -283,7 +287,8 @@ func NewProcessExecutor(
 			}
 		}()
 	}
-	pe.broker = broker
+	//pe.broker = broker
+	go broker()
 
 	return pe
 }
@@ -488,65 +493,64 @@ func (pe *ProcessExecutor) CheckElement(element *entity.Element) error {
 	return nil
 }
 
-func (pe *ProcessExecutor) SetProcess(ctx context.Context, process *entity.Process) error {
-	pe.process = process
-	for i := range pe.process.Elements {
-		pe.elementByUUID[pe.process.Elements[i].UUID] = pe.process.Elements[i]
+func (pe *ProcessExecutor) AddProcess(ctx context.Context, process *entity.Process) error {
+	for i := range process.Elements {
+		pe.elementByUUID[process.Elements[i].UUID] = process.Elements[i]
 	}
 
-	for i := range pe.process.Elements {
-		err := pe.CheckElement(pe.process.Elements[i])
+	for i := range process.Elements {
+		err := pe.CheckElement(process.Elements[i])
 		if err != nil {
-			return fmt.Errorf("%v %v %v: %w", pe.process.Elements[i].ElementType, pe.process.Elements[i].CamundaModelerID, pe.process.Elements[i].CamundaModelerName, err)
+			return fmt.Errorf("%v %v %v: %w", process.Elements[i].ElementType, process.Elements[i].CamundaModelerID, process.Elements[i].CamundaModelerName, err)
 		}
 	}
 	// ищем элемент у которого есть только выходы
-	for i := range pe.process.Elements {
-		if pe.process.Elements[i].IsExternalByTopic {
-			if len(pe.process.Elements[i].TopicName) > 0 {
-				_, ok := pe.elementByTopics[pe.process.Elements[i].TopicName]
+	for i := range process.Elements {
+		if process.Elements[i].IsExternalByTopic {
+			if len(process.Elements[i].TopicName) > 0 {
+				_, ok := pe.elementByTopics[process.Elements[i].TopicName]
 				if ok {
-					return fmt.Errorf("topic %v duplicate, must be unique", pe.process.Elements[i].TopicName)
+					return fmt.Errorf("topic %v duplicate, must be unique", process.Elements[i].TopicName)
 				}
-				pe.elementByTopics[pe.process.Elements[i].TopicName] = pe.process.Elements[i]
+				pe.elementByTopics[process.Elements[i].TopicName] = process.Elements[i]
 			}
 		}
-		if pe.process.Elements[i].IsTimer {
-			if len(pe.process.Elements[i].TimerID) > 0 {
-				_, ok := pe.elementByTimerID[pe.process.Elements[i].TimerID]
+		if process.Elements[i].IsTimer {
+			if len(process.Elements[i].TimerID) > 0 {
+				_, ok := pe.elementByTimerID[process.Elements[i].TimerID]
 				if ok {
-					return fmt.Errorf("timer %v duplicate, must be unique", pe.process.Elements[i].TimerID)
+					return fmt.Errorf("timer %v duplicate, must be unique", process.Elements[i].TimerID)
 				}
-				pe.elementByTimerID[pe.process.Elements[i].TimerID] = pe.process.Elements[i]
+				pe.elementByTimerID[process.Elements[i].TimerID] = process.Elements[i]
 			}
 		}
-		if pe.process.Elements[i].IsRecieveMail {
-			if len(pe.process.Elements[i].MailBoxID) > 0 {
-				_, ok := pe.elementByTopics[pe.process.Elements[i].MailBoxID]
+		if process.Elements[i].IsRecieveMail {
+			if len(process.Elements[i].MailBoxID) > 0 {
+				_, ok := pe.elementByTopics[process.Elements[i].MailBoxID]
 				if ok {
-					return fmt.Errorf("mail box %v duplicate, must be unique", pe.process.Elements[i].MailBoxID)
+					return fmt.Errorf("mail box %v duplicate, must be unique", process.Elements[i].MailBoxID)
 				}
-				pe.elementByMailBoxID[pe.process.Elements[i].MailBoxID] = pe.process.Elements[i]
+				pe.elementByMailBoxID[process.Elements[i].MailBoxID] = process.Elements[i]
 			}
 		}
-		if pe.process.Elements[i].IsExternal {
-			if len(pe.process.Elements[i].CamundaModelerName) > 0 {
-				_, ok := pe.elementByExternalActivation[pe.process.Elements[i].CamundaModelerName]
+		if process.Elements[i].IsExternal {
+			if len(process.Elements[i].CamundaModelerName) > 0 {
+				_, ok := pe.elementByExternalActivation[process.Elements[i].CamundaModelerName]
 				if ok {
-					return fmt.Errorf("mail box %v duplicate, must be unique", pe.process.Elements[i].CamundaModelerName)
+					return fmt.Errorf("mail box %v duplicate, must be unique", process.Elements[i].CamundaModelerName)
 				}
-				pe.elementByExternalActivation[pe.process.Elements[i].CamundaModelerName] = pe.process.Elements[i]
+				pe.elementByExternalActivation[process.Elements[i].CamundaModelerName] = process.Elements[i]
 			}
 		}
-		if pe.process.Elements[i].IsRecieveMail {
-			for j := range pe.process.Elements[i].InputMessages {
-				if len(pe.process.Elements[i].InputMessages[j].Name) > 0 {
-					elements, ok := pe.elementByMessageName[pe.process.Elements[i].InputMessages[j].Name]
+		if process.Elements[i].IsRecieveMail {
+			for j := range process.Elements[i].InputMessages {
+				if len(process.Elements[i].InputMessages[j].Name) > 0 {
+					elements, ok := pe.elementByMessageName[process.Elements[i].InputMessages[j].Name]
 					if !ok {
 						elements = []*entity.Element{}
 					}
-					elements = append(elements, pe.process.Elements[i])
-					pe.elementByMessageName[pe.process.Elements[i].InputMessages[j].Name] = elements
+					elements = append(elements, process.Elements[i])
+					pe.elementByMessageName[process.Elements[i].InputMessages[j].Name] = elements
 				}
 			}
 		}
@@ -554,13 +558,13 @@ func (pe *ProcessExecutor) SetProcess(ctx context.Context, process *entity.Proce
 
 	// инициализируем топики
 	for t := range pe.elementByTopics {
-		err := pe.externalTopic.Init(ctx, pe.process.Name, t)
+		err := pe.externalTopic.Init(ctx, process.Name, t)
 		if err != nil {
 			return fmt.Errorf("failed init topic %v: %w", t, err)
 		}
 		// добавляем в топик обработчик
-		pe.externalTopic.SetTopicResponse(ctx, pe.process.Name, t, func(processName, processId, topicName string, msgs []*entity.Message, vars []*entity.Variable) error {
-			if processName != pe.process.Name {
+		pe.externalTopic.SetTopicResponse(ctx, process.Name, t, func(processName, processId, topicName string, msgs []*entity.Message, vars []*entity.Variable) error {
+			if processName != process.Name {
 				return fmt.Errorf("bad process %v", processName)
 			}
 			if topicName != t {
@@ -581,8 +585,8 @@ func (pe *ProcessExecutor) SetProcess(ctx context.Context, process *entity.Proce
 		})
 	}
 	for t := range pe.elementByTimerID {
-		err := pe.timer.SetTimerResponse(ctx, pe.process.Name, t, func(processName, processId, timerID string, tm time.Time, msgs []*entity.Message, vars []*entity.Variable) error {
-			if processName != pe.process.Name {
+		err := pe.timer.SetTimerResponse(ctx, process.Name, t, func(processName, processId, timerID string, tm time.Time, msgs []*entity.Message, vars []*entity.Variable) error {
+			if processName != process.Name {
 				return fmt.Errorf("bad process %v", processName)
 			}
 			if timerID != t {
@@ -609,13 +613,13 @@ func (pe *ProcessExecutor) SetProcess(ctx context.Context, process *entity.Proce
 
 	// инициализируем обработчики внешней активации
 	for t := range pe.elementByExternalActivation {
-		err := pe.externalActivationAgent.Init(ctx, pe.process.Name, t)
+		err := pe.externalActivationAgent.Init(ctx, process.Name, t)
 		if err != nil {
 			return fmt.Errorf("failed init topic %v: %w", t, err)
 		}
 		// добавляем в топик обработчик
-		pe.externalActivationAgent.SetActivationResponse(ctx, pe.process.Name, t, func(processName, processId, elementName string, msgs []*entity.Message, vars []*entity.Variable) error {
-			if processName != pe.process.Name {
+		pe.externalActivationAgent.SetActivationResponse(ctx, process.Name, t, func(processName, processId, elementName string, msgs []*entity.Message, vars []*entity.Variable) error {
+			if processName != process.Name {
 				return fmt.Errorf("bad process %v", processName)
 			}
 			if elementName != t {
@@ -636,17 +640,24 @@ func (pe *ProcessExecutor) SetProcess(ctx context.Context, process *entity.Proce
 		})
 	}
 
-	go pe.broker()
+	if len(process.Name) == 0 {
+		return fmt.Errorf("process has empty name")
+	}
+	pe.processByProcessName[process.Name] = process
 
 	return nil
 }
 
-func (pe *ProcessExecutor) StartProcess(ctx context.Context, vars []*entity.Variable) (string, error) {
+func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string, vars []*entity.Variable) (string, error) {
+	currentProcess, ok := pe.processByProcessName[processName]
+	if !ok {
+		return "", fmt.Errorf("process %v not found", processName)
+	}
 	// ищем элемент у которого есть только выходы
 	var currentElements []*entity.Element
-	for i := range pe.process.Elements {
-		if len(pe.process.Elements[i].InputsElementID) == 0 && len(pe.process.Elements[i].OutputsElementID) > 0 {
-			currentElements = append(currentElements, pe.process.Elements[i])
+	for i := range currentProcess.Elements {
+		if len(currentProcess.Elements[i].InputsElementID) == 0 && len(currentProcess.Elements[i].OutputsElementID) > 0 {
+			currentElements = append(currentElements, currentProcess.Elements[i])
 		}
 	}
 	if currentElements == nil {
@@ -662,6 +673,7 @@ func (pe *ProcessExecutor) StartProcess(ctx context.Context, vars []*entity.Vari
 	}
 
 	process := NewProcess(pContext)
+	process.process = currentProcess
 
 	pe.processes = append(pe.processes, process)
 	pe.executedProcessByUUID[process.UUID] = process
@@ -1169,7 +1181,7 @@ func (pe *ProcessExecutor) SendToExternalTopic(msg *ChannelMessage) error {
 		pe.fnDebug(ctx, fmt.Sprintf("process %v send to topic %v ", process.UUID, msg.CurrentElement.TopicName))
 	}
 
-	return pe.externalTopic.Send(ctx, pe.process.Name, process.UUID, msg.CurrentElement.TopicName, msg.Messages, msg.Variables)
+	return pe.externalTopic.Send(ctx, process.process.Name, process.UUID, msg.CurrentElement.TopicName, msg.Messages, msg.Variables)
 }
 
 func (pe *ProcessExecutor) ActivateTimer(msg *ChannelMessage) error {
@@ -1186,7 +1198,7 @@ func (pe *ProcessExecutor) ActivateTimer(msg *ChannelMessage) error {
 		IsCycle:  msg.CurrentElement.TimerIsCycle,
 	}
 
-	err := pe.timer.Set(ctx, pe.process.Name, process.UUID, msg.CurrentElement.TimerID, timerValue, msg.CurrentElement.OutputMessages, msg.CurrentElement.InputVars)
+	err := pe.timer.Set(ctx, process.process.Name, process.UUID, msg.CurrentElement.TimerID, timerValue, msg.CurrentElement.OutputMessages, msg.CurrentElement.InputVars)
 	if err != nil {
 		return fmt.Errorf("failed activate timer: %w", err)
 	}
