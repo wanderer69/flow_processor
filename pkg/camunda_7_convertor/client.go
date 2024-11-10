@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 
 	"github.com/tetratelabs/wazero"
@@ -19,6 +20,57 @@ type ConverterClient struct {
 
 func NewConverterClient() *ConverterClient {
 	return &ConverterClient{}
+}
+
+func (cc *ConverterClient) Check(processRaw string) (bool, error) {
+	var data map[string]interface{}
+	err := xml.Unmarshal([]byte(processRaw), &data)
+	if err != nil {
+		return false, nil
+	}
+	fmt.Printf("`%#v`\r\n", data)
+	/*
+		verI, ok := data["version"]
+		if !ok {
+			return false, nil
+		}
+		ver, ok := verI.(string)
+		if !ok {
+			return false, nil
+		}
+		if ver != "0.5.0" {
+			return false, nil
+		}
+
+		signI, ok := data["sign"]
+		if !ok {
+			return false, nil
+		}
+		sign, ok := signI.(string)
+		if !ok {
+			return false, nil
+		}
+
+		processI, ok := data["process"]
+		if !ok {
+			return false, nil
+		}
+		process, ok := processI.(*entity.Process)
+		if !ok {
+			return false, nil
+		}
+
+		dataRaw, err := json.Marshal(process)
+		if err != nil {
+			return false, nil
+		}
+		md := md5.New()
+		calcSign := string(md.Sum(dataRaw))
+		if calcSign != sign {
+			return false, nil
+		}
+	*/
+	return true, nil
 }
 
 func (cc *ConverterClient) Convert(process string) (string, error) {

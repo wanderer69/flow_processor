@@ -166,7 +166,7 @@ func TestProcessSimpleI(t *testing.T) {
 		Value: "var_value1",
 	}
 
-	require.NoError(t, pe.SetProcess(ctx, p))
+	require.NoError(t, pe.AddProcess(ctx, p))
 	var currentProcessId *string
 
 	pe.SetLogger(ctx, func(ctx context.Context, msg string) error {
@@ -206,7 +206,7 @@ func TestProcessSimpleI(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, nil)
+	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
 	currentProcessId = &processId
 
@@ -360,7 +360,7 @@ func TestProcessSimpleII(t *testing.T) {
 	}
 
 	userProcess := make(chan bool)
-	require.NoError(t, pe.SetProcess(ctx, p))
+	require.NoError(t, pe.AddProcess(ctx, p))
 	var currentProcessId *string
 
 	pe.SetLogger(ctx, func(ctx context.Context, msg string) error {
@@ -401,7 +401,7 @@ func TestProcessSimpleII(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, nil)
+	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
 	currentProcessId = &processId
 
@@ -676,7 +676,7 @@ func TestProcessSimpleIII(t *testing.T) {
 	}
 
 	userProcess := make(chan bool)
-	require.NoError(t, pe.SetProcess(ctx, p))
+	require.NoError(t, pe.AddProcess(ctx, p))
 	var currentProcessId *string
 
 	pe.SetLogger(ctx, func(ctx context.Context, msg string) error {
@@ -741,7 +741,7 @@ func TestProcessSimpleIII(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, nil)
+	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
 	currentProcessId = &processId
 
@@ -755,7 +755,7 @@ func TestProcessSimpleIII(t *testing.T) {
 	var2.Type = "boolean"
 	var2.Value = "true"
 
-	processId, err = pe.StartProcess(ctx, nil)
+	processId, err = pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
 	currentProcessId = &processId
 
@@ -1030,7 +1030,7 @@ func TestProcessSimpleIV(t *testing.T) {
 	}
 
 	userProcess := make(chan bool)
-	require.NoError(t, pe.SetProcess(ctx, p))
+	require.NoError(t, pe.AddProcess(ctx, p))
 	var currentProcessId *string
 
 	pe.SetLogger(ctx, func(ctx context.Context, msg string) error {
@@ -1095,7 +1095,7 @@ func TestProcessSimpleIV(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, nil)
+	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
 	currentProcessId = &processId
 
@@ -1394,7 +1394,7 @@ func TestProcessSimpleV(t *testing.T) {
 		Value: "var_value1",
 	}
 
-	require.NoError(t, pe.SetProcess(ctx, p))
+	require.NoError(t, pe.AddProcess(ctx, p))
 	var currentProcessId *string
 
 	userProcess := make(chan bool)
@@ -1437,7 +1437,7 @@ func TestProcessSimpleV(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, nil)
+	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
 	currentProcessId = &processId
 	<-userProcess
@@ -1465,7 +1465,7 @@ func TestProcessSimpleVI(t *testing.T) {
 
 	require.NoError(t, json.Unmarshal([]byte(processes1), &ps))
 
-	require.NoError(t, pe.SetProcess(ctx, ps[0]))
+	require.NoError(t, pe.AddProcess(ctx, ps[0]))
 	var currentProcessId *string
 
 	userProcess := make(chan bool)
@@ -1508,7 +1508,7 @@ func TestProcessSimpleVI(t *testing.T) {
 		return nil
 	})
 
-	processId, err := pe.StartProcess(ctx, nil)
+	processId, err := pe.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
 	currentProcessId = &processId
 	<-userProcess
