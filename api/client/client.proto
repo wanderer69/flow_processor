@@ -6,8 +6,6 @@ option go_package="../pkg/gen";
 service ClientConnector {
   rpc AddProcess(AddProcessRequest) returns (AddProcessResponse) {}
   rpc SetHandler(SetHandlerRequest) returns (SetHandlerResponse) {}
-  //rpc ConnectToProcess(ConnectToProcessRequest) returns (ConnectToProcessResponse) {}
-  //rpc StartProcess(StartProcessRequest) returns (StartProcessResponse) {}
   rpc Connect (stream Request) returns (stream Response) {}
 }
 
