@@ -56,8 +56,8 @@ type ProcessorClient struct {
 	fnTopicExecuteByProcessNameAndTopicName map[string]Callback
 	fnProcessFinishedByProcessName          map[string]Callback
 	fnProcessFinishedByProcessID            map[string]Callback
-	processConnector                        map[string]string
-	idCounter                               int32
+	//processConnector                        map[string]string
+	idCounter int32
 
 	toProcess            chan *Call
 	startProcessResponse chan *pb.Response
@@ -91,41 +91,16 @@ func NewProcessorClient(port int) *ProcessorClient {
 		//topicExecute:                            make(chan *Call),
 	}
 	go func() {
-		for {
-			select {
-			case call := <-result.toProcess:
-				result.mu.Lock()
-				if result.callRoot == nil {
-					result.callRoot = call
-					result.callCurrent = result.callRoot
-				} else {
-					call.next = result.callCurrent
-					result.callCurrent = call
-				}
-				result.mu.Unlock()
-				/*
-					case exec := <-result.topicExecute:
-						result.mu.Lock()
-						if result.callRoot == nil {
-							result.callRoot = exec
-							result.callCurrent = result.callRoot
-						} else {
-							exec.next = result.callCurrent
-							result.callCurrent = exec
-						}
-						result.mu.Unlock()
-					case exec := <-result.topicComplete:
-						result.mu.Lock()
-						if result.callRoot == nil {
-							result.callRoot = exec
-							result.callCurrent = result.callRoot
-						} else {
-							exec.next = result.callCurrent
-							result.callCurrent = exec
-						}
-						result.mu.Unlock()
-				*/
+		for call := range result.toProcess {
+			result.mu.Lock()
+			if result.callRoot == nil {
+				result.callRoot = call
+				result.callCurrent = result.callRoot
+			} else {
+				call.next = result.callCurrent
+				result.callCurrent = call
 			}
+			result.mu.Unlock()
 		}
 	}()
 
@@ -332,7 +307,7 @@ func (pc ProcessorClient) SetCallback(ctx context.Context, processName string, t
 
 func (pc ProcessorClient) AddProcess(ctx context.Context, processRaw string) error {
 	logger := zap.L()
-	logger.Info("StoreProcess")
+	logger.Info("AddProcess")
 	conn, err := grpc.NewClient(fmt.Sprintf(":%d", pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logger.Error("can not connect with server", zap.Error(err))
@@ -354,7 +329,7 @@ func (pc ProcessorClient) AddProcess(ctx context.Context, processRaw string) err
 	return nil
 }
 
-func (pc ProcessorClient) StartProcess(ctx context.Context, processName string) (string, error) {
+func (pc ProcessorClient) StartProcess(ctx context.Context, processName string, vars []*entity.Variable) (string, error) {
 	logger := zap.L()
 	logger.Info("StartProcess")
 
@@ -362,6 +337,7 @@ func (pc ProcessorClient) StartProcess(ctx context.Context, processName string) 
 		CallType: CTStartProcess,
 		Args: Args{
 			ProcessName: processName,
+			Variables:   vars,
 		},
 	}
 	processID := ""
@@ -471,6 +447,12 @@ func (pc ProcessorClient) SetProcessFinished(ctx context.Context, processName st
 	return nil
 }
 
+func (pc ProcessorClient) GetList(ctx context.Context, processName string) ([]string, error) {
+	logger := zap.L()
+	logger.Info("GetList")
+	return []string{}, nil
+}
+
 func (pc *ProcessorClient) Connect(processName string, connected chan bool) error {
 	logger := zap.L()
 	logger.Info("Connect")
@@ -492,24 +474,22 @@ func (pc *ProcessorClient) Connect(processName string, connected chan bool) erro
 	done := make(chan bool)
 
 	go func() {
-		for {
-			select {
-			case req := <-pc.send:
-				if req == nil {
-					if err = stream.CloseSend(); err != nil {
-						logger.Error("send", zap.Error(err))
-					}
-					return
+		for req := range pc.send {
+			if req == nil {
+				if err = stream.CloseSend(); err != nil {
+					logger.Error("send", zap.Error(err))
 				}
-				pc.idCounter += 1
-				req.Id = pc.idCounter
-				err = stream.Send(req)
-				if err != nil {
-					logger.Error("Connect: failed send", zap.Error(err))
-					stream.SendMsg(err)
-					return
-				}
+				return
 			}
+			pc.idCounter += 1
+			req.Id = pc.idCounter
+			err = stream.Send(req)
+			if err != nil {
+				logger.Error("Connect: failed send", zap.Error(err))
+				stream.SendMsg(err)
+				return
+			}
+
 			time.Sleep(time.Duration(5) * time.Microsecond)
 		}
 	}()

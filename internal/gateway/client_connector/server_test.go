@@ -109,7 +109,7 @@ func TestServerSimpleI(t *testing.T) {
 		require.NoError(t, client.Connect(currentProcessName, connected))
 	}()
 	<-connected
-	processID, err := client.StartProcess(ctx, currentProcessName)
+	processID, err := client.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
 	currentProcessId = &processID
 	<-done
@@ -216,13 +216,13 @@ func TestProcessSimpleII(t *testing.T) {
 		require.NoError(t, client.Connect(currentProcessName, connected))
 	}()
 	<-connected
-	processID, err := client.StartProcess(ctx, currentProcessName)
+	processID, err := client.StartProcess(ctx, currentProcessName, nil)
 	require.NoError(t, err)
 	currentProcessId = &processID
 
 	<-userProcess
 	time.Sleep(time.Millisecond * 20000)
-	require.NoError(t, externalActivationClient.CompleteActivation(ctx, currentProcessName, *currentProcessId, taskName3, nil, nil))
+	client.ExternalActivation(ctx, currentProcessName, *currentProcessId, taskName3, nil, nil)
 
 	<-done
 }
