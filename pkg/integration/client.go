@@ -52,19 +52,16 @@ type Call struct {
 }
 
 type ProcessorClient struct {
+	url                                     string
 	port                                    int
 	fnTopicExecuteByProcessNameAndTopicName map[string]Callback
 	fnProcessFinishedByProcessName          map[string]Callback
 	fnProcessFinishedByProcessID            map[string]Callback
-	//processConnector                        map[string]string
-	idCounter int32
+	idCounter                               int32
 
-	toProcess            chan *Call
-	startProcessResponse chan *pb.Response
-	//connectToProcessRequest  chan *Call
+	toProcess                chan *Call
+	startProcessResponse     chan *pb.Response
 	connectToProcessResponse chan *pb.Response
-
-	//topicExecute chan *Call
 
 	send chan *pb.Request
 
@@ -75,8 +72,9 @@ type ProcessorClient struct {
 	callCurrent *Call
 }
 
-func NewProcessorClient(port int) *ProcessorClient {
+func NewProcessorClient(url string, port int) *ProcessorClient {
 	result := &ProcessorClient{
+		url:                                     url,
 		port:                                    port,
 		fnTopicExecuteByProcessNameAndTopicName: make(map[string]Callback),
 		fnProcessFinishedByProcessName:          make(map[string]Callback),
@@ -85,10 +83,8 @@ func NewProcessorClient(port int) *ProcessorClient {
 		toProcess:                               make(chan *Call),
 		startProcessResponse:                    make(chan *pb.Response),
 		send:                                    make(chan *pb.Request),
-		//connectToProcessRequest:                 make(chan *Call),
-		connectToProcessResponse: make(chan *pb.Response),
-		durationWaitAnswer:       10 * time.Second,
-		//topicExecute:                            make(chan *Call),
+		connectToProcessResponse:                make(chan *pb.Response),
+		durationWaitAnswer:                      10 * time.Second,
 	}
 	go func() {
 		for call := range result.toProcess {
@@ -282,7 +278,7 @@ func NewProcessorClient(port int) *ProcessorClient {
 func (pc ProcessorClient) SetCallback(ctx context.Context, processName string, topicName string, fn Callback) error {
 	logger := zap.L()
 	logger.Info("SetCallback")
-	conn, err := grpc.NewClient(fmt.Sprintf(":%d", pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", pc.url, pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logger.Error("can not connect with server", zap.Error(err))
 		return err
@@ -308,7 +304,7 @@ func (pc ProcessorClient) SetCallback(ctx context.Context, processName string, t
 func (pc ProcessorClient) AddProcess(ctx context.Context, processRaw string) error {
 	logger := zap.L()
 	logger.Info("AddProcess")
-	conn, err := grpc.NewClient(fmt.Sprintf(":%d", pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", pc.url, pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logger.Error("can not connect with server", zap.Error(err))
 		return err
@@ -456,7 +452,7 @@ func (pc ProcessorClient) GetList(ctx context.Context, processName string) ([]st
 func (pc *ProcessorClient) Connect(processName string, connected chan bool) error {
 	logger := zap.L()
 	logger.Info("Connect")
-	conn, err := grpc.NewClient(fmt.Sprintf(":%d", pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", pc.url, pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logger.Error("can not connect with server", zap.Error(err))
 		return err

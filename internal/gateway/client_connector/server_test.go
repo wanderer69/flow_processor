@@ -38,7 +38,7 @@ func TestServerSimpleI(t *testing.T) {
 		return nil
 	})
 
-	client := integration.NewProcessorClient(port)
+	client := integration.NewProcessorClient("", port)
 
 	currentProcessName := "test_process"
 	topic1 := "topic1"
@@ -137,7 +137,7 @@ func TestProcessSimpleII(t *testing.T) {
 		return nil
 	})
 
-	client := integration.NewProcessorClient(port)
+	client := integration.NewProcessorClient("", port)
 
 	currentProcessName := "test_process"
 	topic1 := "topic1"
