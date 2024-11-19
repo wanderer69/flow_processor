@@ -10,9 +10,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	camunda7convertor "github.com/wanderer69/flow_processor/pkg/camunda_7_convertor"
 	"github.com/wanderer69/flow_processor/pkg/entity"
 	externalactivation "github.com/wanderer69/flow_processor/pkg/external_activation"
 	externaltopic "github.com/wanderer69/flow_processor/pkg/external_topic"
+	internalformat "github.com/wanderer69/flow_processor/pkg/internal_format"
+	"github.com/wanderer69/flow_processor/pkg/loader"
+	"github.com/wanderer69/flow_processor/pkg/store"
 	"github.com/wanderer69/flow_processor/pkg/timer"
 )
 
@@ -38,11 +42,16 @@ func TestProcessSimpleI(t *testing.T) {
 	timerClient := timer.NewTimer()
 	externalActivationClient := externalactivation.NewExternalActivation()
 	testClient := NewTestClient(topicClient)
+	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
+	internalFormatClient := internalformat.NewInternalFormat()
+	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
+	storeClient := store.NewStore(loader)
+	stop := make(chan struct{})
 
 	currentProcessName := "test_process"
 	topic1 := "topic1"
 	topic2 := "topic2"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
 
 	/*
 	   тестовая последовательность
@@ -220,11 +229,16 @@ func TestProcessSimpleII(t *testing.T) {
 	timerClient := timer.NewTimer()
 	externalActivationClient := externalactivation.NewExternalActivation()
 	testClient := NewTestClient(topicClient)
+	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
+	internalFormatClient := internalformat.NewInternalFormat()
+	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
+	storeClient := store.NewStore(loader)
+	stop := make(chan struct{})
 
 	currentProcessName := "test_process"
 	topic1 := "topic1"
 	topic2 := "topic2"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
 
 	/*
 	   тестовая последовательность
@@ -419,6 +433,11 @@ func TestProcessSimpleIII(t *testing.T) {
 	timerClient := timer.NewTimer()
 	externalActivationClient := externalactivation.NewExternalActivation()
 	testClient := NewTestClient(topicClient)
+	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
+	internalFormatClient := internalformat.NewInternalFormat()
+	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
+	storeClient := store.NewStore(loader)
+	stop := make(chan struct{})
 
 	currentProcessName := "test_process"
 	topic1 := "topic1"
@@ -426,7 +445,7 @@ func TestProcessSimpleIII(t *testing.T) {
 	topic3 := "topic3"
 	topic4 := "topic4"
 	topic5 := "topic5"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
 
 	/*
 	   тестовая последовательность
@@ -445,9 +464,10 @@ func TestProcessSimpleIII(t *testing.T) {
 	}
 
 	f1 := &entity.Element{
-		UUID:           uuid.NewString(),
-		ActivationType: entity.ActivationTypeInternal,
-		ElementType:    entity.ElementTypeFlow,
+		UUID:               uuid.NewString(),
+		ActivationType:     entity.ActivationTypeInternal,
+		ElementType:        entity.ElementTypeFlow,
+		CamundaModelerName: "element_flow_1",
 	}
 
 	e2 := &entity.Element{
@@ -461,9 +481,10 @@ func TestProcessSimpleIII(t *testing.T) {
 	}
 
 	f2 := &entity.Element{
-		UUID:           uuid.NewString(),
-		ActivationType: entity.ActivationTypeInternal,
-		ElementType:    entity.ElementTypeFlow,
+		UUID:               uuid.NewString(),
+		ActivationType:     entity.ActivationTypeInternal,
+		ElementType:        entity.ElementTypeFlow,
+		CamundaModelerName: "element_flow_2",
 	}
 
 	e3 := &entity.Element{
@@ -476,9 +497,10 @@ func TestProcessSimpleIII(t *testing.T) {
 	}
 
 	f3 := &entity.Element{
-		UUID:           uuid.NewString(),
-		ActivationType: entity.ActivationTypeInternal,
-		ElementType:    entity.ElementTypeFlow,
+		UUID:               uuid.NewString(),
+		ActivationType:     entity.ActivationTypeInternal,
+		ElementType:        entity.ElementTypeFlow,
+		CamundaModelerName: "element_flow_3",
 	}
 
 	e4 := &entity.Element{
@@ -492,9 +514,10 @@ func TestProcessSimpleIII(t *testing.T) {
 	}
 
 	f31 := &entity.Element{
-		UUID:           uuid.NewString(),
-		ActivationType: entity.ActivationTypeInternal,
-		ElementType:    entity.ElementTypeFlow,
+		UUID:               uuid.NewString(),
+		ActivationType:     entity.ActivationTypeInternal,
+		ElementType:        entity.ElementTypeFlow,
+		CamundaModelerName: "element_flow_31",
 	}
 
 	e41 := &entity.Element{
@@ -542,15 +565,17 @@ func TestProcessSimpleIII(t *testing.T) {
 	}
 
 	f34 := &entity.Element{
-		UUID:           uuid.NewString(),
-		ActivationType: entity.ActivationTypeInternal,
-		ElementType:    entity.ElementTypeFlow,
+		UUID:               uuid.NewString(),
+		ActivationType:     entity.ActivationTypeInternal,
+		ElementType:        entity.ElementTypeFlow,
+		CamundaModelerName: "element_flow_34",
 	}
 
 	f35 := &entity.Element{
-		UUID:           uuid.NewString(),
-		ActivationType: entity.ActivationTypeInternal,
-		ElementType:    entity.ElementTypeFlow,
+		UUID:               uuid.NewString(),
+		ActivationType:     entity.ActivationTypeInternal,
+		ElementType:        entity.ElementTypeFlow,
+		CamundaModelerName: "element_flow_35",
 	}
 
 	e44 := &entity.Element{
@@ -564,9 +589,10 @@ func TestProcessSimpleIII(t *testing.T) {
 	}
 
 	f4 := &entity.Element{
-		UUID:           uuid.NewString(),
-		ActivationType: entity.ActivationTypeInternal,
-		ElementType:    entity.ElementTypeFlow,
+		UUID:               uuid.NewString(),
+		ActivationType:     entity.ActivationTypeInternal,
+		ElementType:        entity.ElementTypeFlow,
+		CamundaModelerName: "element_flow_4",
 	}
 
 	e5 := &entity.Element{
@@ -773,6 +799,11 @@ func TestProcessSimpleIV(t *testing.T) {
 	timerClient := timer.NewTimer()
 	externalActivationClient := externalactivation.NewExternalActivation()
 	testClient := NewTestClient(topicClient)
+	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
+	internalFormatClient := internalformat.NewInternalFormat()
+	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
+	storeClient := store.NewStore(loader)
+	stop := make(chan struct{})
 
 	currentProcessName := "test_process"
 	topic1 := "topic1"
@@ -780,7 +811,7 @@ func TestProcessSimpleIV(t *testing.T) {
 	topic3 := "topic3"
 	topic4 := "topic4"
 	topic5 := "topic5"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
 
 	/*
 	   тестовая последовательность
@@ -878,10 +909,9 @@ func TestProcessSimpleIV(t *testing.T) {
 	}
 
 	f33 := &entity.Element{
-		UUID:           uuid.NewString(),
-		ActivationType: entity.ActivationTypeInternal,
-		ElementType:    entity.ElementTypeFlow,
-		//		Script:             "${isLeft}",
+		UUID:               uuid.NewString(),
+		ActivationType:     entity.ActivationTypeInternal,
+		ElementType:        entity.ElementTypeFlow,
 		CamundaModelerName: "element_flow_33",
 	}
 
@@ -902,6 +932,20 @@ func TestProcessSimpleIV(t *testing.T) {
 	}
 
 	f35 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeFlow,
+	}
+
+	e6 := &entity.Element{
+		UUID:               uuid.NewString(),
+		ActivationType:     entity.ActivationTypeInternal,
+		ElementType:        entity.ElementTypeParallelGateway,
+		CamundaModelerID:   "parallel_gateway_2",
+		CamundaModelerName: "element_parallel_gateway_2",
+	}
+
+	f36 := &entity.Element{
 		UUID:           uuid.NewString(),
 		ActivationType: entity.ActivationTypeInternal,
 		ElementType:    entity.ElementTypeFlow,
@@ -971,10 +1015,17 @@ func TestProcessSimpleIV(t *testing.T) {
 	e43.OutputsElementID = append(e43.OutputsElementID, f34.UUID)
 
 	f34.InputsElementID = append(f34.InputsElementID, e43.UUID)
-	f34.OutputsElementID = append(f34.OutputsElementID, e44.UUID)
+	f34.OutputsElementID = append(f34.OutputsElementID, e6.UUID)
 
 	f35.InputsElementID = append(f35.InputsElementID, e42.UUID)
-	f35.OutputsElementID = append(f35.OutputsElementID, e44.UUID)
+	f35.OutputsElementID = append(f35.OutputsElementID, e6.UUID)
+
+	e6.InputsElementID = append(e6.InputsElementID, f34.UUID)
+	e6.InputsElementID = append(e6.InputsElementID, f35.UUID)
+	e6.OutputsElementID = append(e6.OutputsElementID, f36.UUID)
+
+	f36.InputsElementID = append(f36.InputsElementID, e6.UUID)
+	f36.OutputsElementID = append(f36.OutputsElementID, e44.UUID)
 
 	e44.InputsElementID = append(e44.InputsElementID, f33.UUID)
 	e44.OutputsElementID = append(e44.OutputsElementID, f4.UUID)
@@ -1006,6 +1057,9 @@ func TestProcessSimpleIV(t *testing.T) {
 
 			f34,
 			f35,
+			e6,
+
+			f36,
 			e44,
 
 			f4,
@@ -1113,11 +1167,16 @@ func TestProcessSimpleV(t *testing.T) {
 	timerClient := timer.NewTimer()
 	externalActivationClient := externalactivation.NewExternalActivation()
 	testClient := NewTestClient(topicClient)
+	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
+	internalFormatClient := internalformat.NewInternalFormat()
+	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
+	storeClient := store.NewStore(loader)
+	stop := make(chan struct{})
 
 	currentProcessName := "test_process"
 	topic1 := "topic1"
 	topic2 := "topic2"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
 
 	msgSend1 := &entity.Message{
 		Name: "msgSend1",
@@ -1321,7 +1380,6 @@ func TestProcessSimpleV(t *testing.T) {
 	f4.OutputsElementID = append(f4.OutputsElementID, e10.UUID)
 
 	e5.InputsElementID = append(e5.InputsElementID, f4.UUID)
-	//e5.InputsElementID = append(e5.InputsElementID, f8.UUID)
 
 	e6.OutputsElementID = append(e6.OutputsElementID, f6.UUID)
 
@@ -1441,10 +1499,6 @@ func TestProcessSimpleV(t *testing.T) {
 	require.NoError(t, err)
 	currentProcessId = &process.UUID
 	<-userProcess
-	/*
-		time.Sleep(time.Millisecond * 20)
-		require.NoError(t, externalActivationClient.CompleteActivation(ctx, currentProcessName, *currentProcessId, e3.CamundaModelerName, nil, nil))
-	*/
 	<-pe.Stopped
 }
 
@@ -1455,11 +1509,16 @@ func TestProcessSimpleVI(t *testing.T) {
 	timerClient := timer.NewTimer()
 	externalActivationClient := externalactivation.NewExternalActivation()
 	testClient := NewTestClient(topicClient)
+	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
+	internalFormatClient := internalformat.NewInternalFormat()
+	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
+	storeClient := store.NewStore(loader)
+	stop := make(chan struct{})
 
 	currentProcessName := "Тест1"
 	topic1 := "ExecProcess1"
 	topic2 := "ExecProcess2"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
 
 	var ps []*entity.Process
 
@@ -1512,9 +1571,195 @@ func TestProcessSimpleVI(t *testing.T) {
 	require.NoError(t, err)
 	currentProcessId = &process.UUID
 	<-userProcess
+	<-pe.Stopped
+}
+
+func TestProcessSimpleIProcessRestarted(t *testing.T) {
+	ctx := context.Background()
+
+	topicClient := externaltopic.NewExternalTopic()
+	timerClient := timer.NewTimer()
+	externalActivationClient := externalactivation.NewExternalActivation()
+	testClient := NewTestClient(topicClient)
+	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
+	internalFormatClient := internalformat.NewInternalFormat()
+	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
+	storeClient := store.NewStore(loader)
+	stop := make(chan struct{})
+
+	currentProcessName := "test_process"
+	topic1 := "topic1"
+	topic2 := "topic2"
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+
 	/*
-		time.Sleep(time.Millisecond * 20)
-		require.NoError(t, externalActivationClient.CompleteActivation(ctx, currentProcessName, *currentProcessId, e3.CamundaModelerName, nil, nil))
+	   тестовая последовательность
+	   1. старт -> подаем переменные a b
+	   2. service task -> получает переменные, вызывает внешнюю таску, передает переменные
+	   3. user task -> передает полученные переменные
+	   4. service task -> получает переменные, вызывает внешнюю таску, передает переменные
+	   5. стоп
 	*/
+	e1 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeStartEvent,
+	}
+
+	f1 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeFlow,
+	}
+
+	e2 := &entity.Element{
+		UUID:              uuid.NewString(),
+		ActivationType:    entity.ActivationTypeInternal,
+		ElementType:       entity.ElementTypeServiceTask,
+		IsExternalByTopic: true,
+		TopicName:         topic1,
+	}
+
+	f2 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeFlow,
+	}
+
+	e3 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeExternal,
+		ElementType:    entity.ElementTypeUserTask,
+	}
+
+	f3 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeFlow,
+	}
+
+	e4 := &entity.Element{
+		UUID:              uuid.NewString(),
+		ActivationType:    entity.ActivationTypeInternal,
+		ElementType:       entity.ElementTypeServiceTask,
+		IsExternalByTopic: true,
+		TopicName:         topic2,
+	}
+
+	f4 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeFlow,
+	}
+
+	e5 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeEndEvent,
+	}
+
+	e1.OutputsElementID = append(e1.OutputsElementID, f1.UUID)
+
+	f1.InputsElementID = append(f1.InputsElementID, e1.UUID)
+	f1.OutputsElementID = append(f1.OutputsElementID, e2.UUID)
+
+	e2.InputsElementID = append(e2.InputsElementID, f1.UUID)
+	e2.OutputsElementID = append(e2.OutputsElementID, f2.UUID)
+
+	f2.InputsElementID = append(f2.InputsElementID, e2.UUID)
+	f2.OutputsElementID = append(f2.OutputsElementID, e3.UUID)
+
+	e3.InputsElementID = append(e3.InputsElementID, f2.UUID)
+	e3.OutputsElementID = append(e3.OutputsElementID, f3.UUID)
+
+	f3.InputsElementID = append(f3.InputsElementID, e3.UUID)
+	f3.OutputsElementID = append(f3.OutputsElementID, e4.UUID)
+
+	e4.InputsElementID = append(e4.InputsElementID, f3.UUID)
+	e4.OutputsElementID = append(e4.OutputsElementID, f4.UUID)
+
+	f4.InputsElementID = append(f4.InputsElementID, e4.UUID)
+	f4.OutputsElementID = append(f4.OutputsElementID, e5.UUID)
+
+	e5.InputsElementID = append(e5.InputsElementID, f4.UUID)
+
+	p := &entity.Process{
+		Name: currentProcessName,
+		Elements: []*entity.Element{
+			e1,
+			f1,
+			e2,
+			f2,
+			e3,
+			f3,
+			e4,
+			f4,
+			e5,
+		},
+	}
+
+	msg1 := &entity.Message{
+		Name: "msg1",
+		Fields: []*entity.Field{
+			{
+				Name:  "field1",
+				Type:  "string",
+				Value: "test1",
+			},
+		},
+	}
+	var1 := &entity.Variable{
+		Name:  "var1",
+		Type:  "string",
+		Value: "var_value1",
+	}
+
+	require.NoError(t, pe.AddProcess(ctx, p))
+	var currentProcessId *string
+
+	pe.SetLogger(ctx, func(ctx context.Context, msg string) error {
+		fmt.Printf("%v\r\n", msg)
+		return nil
+	})
+
+	testClient.topicClient.SetTopicHandler(ctx, currentProcessName, topic1, func(processName, processId, topicName string, msgs []*entity.Message, vars []*entity.Variable) error {
+		require.Equal(t, *currentProcessId, processId)
+		require.Equal(t, currentProcessName, currentProcessName)
+		require.Equal(t, topic1, topicName)
+		require.NoError(t, testClient.topicClient.CompleteTopic(ctx, processName, processId, topic1, []*entity.Message{msg1}, []*entity.Variable{var1}))
+		return nil
+	})
+
+	msg2 := &entity.Message{
+		Name: "msg2",
+		Fields: []*entity.Field{
+			{
+				Name:  "field2",
+				Type:  "string",
+				Value: "test2",
+			},
+		},
+	}
+	var2 := &entity.Variable{
+		Name:  "var2",
+		Type:  "string",
+		Value: "var_value2",
+	}
+
+	testClient.topicClient.SetTopicHandler(ctx, currentProcessName, topic2, func(processName, processId, topicName string, msgs []*entity.Message, vars []*entity.Variable) error {
+		require.Equal(t, *currentProcessId, processId)
+		require.Equal(t, currentProcessName, currentProcessName)
+		require.Equal(t, topic2, topicName)
+		testClient.topicClient.CompleteTopic(ctx, processName, processId, topicName, []*entity.Message{msg2}, []*entity.Variable{var2})
+		return nil
+	})
+
+	process, err := pe.StartProcess(ctx, currentProcessName, nil)
+	require.NoError(t, err)
+	currentProcessId = &process.UUID
+
+	time.Sleep(time.Millisecond * 50)
+	stop <- struct{}{}
+
 	<-pe.Stopped
 }

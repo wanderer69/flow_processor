@@ -51,3 +51,11 @@ func (l *Loader) Load(processRaw string) (*entity.Process, error) {
 	}
 	return nil, fmt.Errorf("format unsupported")
 }
+
+func (l *Loader) Save(process *entity.Process) (string, error) {
+	dataRaw, err := json.Marshal(process)
+	if err != nil {
+		return "", err
+	}
+	return l.internalFormat.Store(string(dataRaw))
+}

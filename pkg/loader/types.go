@@ -8,4 +8,5 @@ type Camunda7Convertor interface {
 type InternalFormat interface {
 	Convert(process string) (string, error)
 	Check(process string) (bool, error)
+	Store(processRaw string) (string, error)
 }
