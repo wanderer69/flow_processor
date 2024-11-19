@@ -7,12 +7,16 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	camunda7convertor "github.com/wanderer69/flow_processor/pkg/camunda_7_convertor"
 	"github.com/wanderer69/flow_processor/pkg/entity"
 	externalactivation "github.com/wanderer69/flow_processor/pkg/external_activation"
 	externaltopic "github.com/wanderer69/flow_processor/pkg/external_topic"
 	"github.com/wanderer69/flow_processor/pkg/integration"
+	internalformat "github.com/wanderer69/flow_processor/pkg/internal_format"
+	"github.com/wanderer69/flow_processor/pkg/loader"
 	"github.com/wanderer69/flow_processor/pkg/logger"
 	"github.com/wanderer69/flow_processor/pkg/process"
+	"github.com/wanderer69/flow_processor/pkg/store"
 	"github.com/wanderer69/flow_processor/pkg/timer"
 )
 
@@ -23,8 +27,13 @@ func TestServerSimpleI(t *testing.T) {
 	topicClient := externaltopic.NewExternalTopic()
 	timerClient := timer.NewTimer()
 	externalActivationClient := externalactivation.NewExternalActivation()
+	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
+	internalFormatClient := internalformat.NewInternalFormat()
+	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
+	storeClient := store.NewStore(loader)
+	stop := make(chan struct{})
 
-	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient)
+	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
 
 	port := 50005
 	go func() {
@@ -122,8 +131,13 @@ func TestProcessSimpleII(t *testing.T) {
 	topicClient := externaltopic.NewExternalTopic()
 	timerClient := timer.NewTimer()
 	externalActivationClient := externalactivation.NewExternalActivation()
+	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
+	internalFormatClient := internalformat.NewInternalFormat()
+	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
+	storeClient := store.NewStore(loader)
+	stop := make(chan struct{})
 
-	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient)
+	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
 
 	port := 50005
 	go func() {
