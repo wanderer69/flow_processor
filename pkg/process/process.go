@@ -111,6 +111,7 @@ type ProcessExecutor struct {
 	loaderClient            LoaderClient
 
 	fnDebug     func(ctx context.Context, msg string) error
+	broker      func()
 	mu          *sync.Mutex
 	msgsRoot    *InternalEvent
 	msgsCurrent *InternalEvent
@@ -348,6 +349,7 @@ func NewProcessExecutor(
 			}
 		}()
 	}
+	pe.broker = broker
 	go broker()
 
 	return pe
@@ -406,45 +408,46 @@ func (pe *ProcessExecutor) ProcessExecutorFinished(ctx context.Context, errorMsg
 	return nil
 }
 
-func (pe *ProcessExecutor) Load(ctx context.Context) error {
-	lst, err := pe.loaderClient.LoadStoredProcessesList()
-	if err != nil {
-		if !strings.Contains(err.Error(), "not found") {
-			return err
+/*
+	func (pe *ProcessExecutor) Load(ctx context.Context) error {
+		lst, err := pe.loaderClient.LoadStoredProcessesList()
+		if err != nil {
+			if !strings.Contains(err.Error(), "not found") {
+				return err
+			}
 		}
+
+		for i := range lst {
+			processName, processID, elementUUID, state, processContext, err := pe.loaderClient.LoadProcessState(lst[i].ProcessName, lst[i].ProcessID)
+			if err != nil {
+				// skip error
+				continue
+			}
+			// загружаем процесс
+			processRaw, err := pe.loaderClient.LoadProcessDiagramm(processName)
+			if err != nil {
+				// skip error
+				continue
+			}
+
+			err = pe.AddProcess(ctx, processRaw)
+			if err != nil {
+				// skip error
+				continue
+			}
+
+			// формируем текущие значения
+			_, err = pe.ContinueProcess(ctx, processName, processID, elementUUID, state, processContext)
+			if err != nil {
+				// skip error
+				continue
+			}
+
+			// в зависимости от состояния отправляем соответствующие события
+		}
+		return nil
 	}
-
-	for i := range lst {
-		processName, processID, elementUUID, state, processContext, err := pe.loaderClient.LoadProcessState(lst[i].ProcessName, lst[i].ProcessID)
-		if err != nil {
-			// skip error
-			continue
-		}
-		// загружаем процесс
-		processRaw, err := pe.loaderClient.LoadProcessDiagramm(processName)
-		if err != nil {
-			// skip error
-			continue
-		}
-
-		err = pe.AddProcess(ctx, processRaw)
-		if err != nil {
-			// skip error
-			continue
-		}
-
-		// формируем текущие значения
-		_, err = pe.ContinueProcess(ctx, processName, processID, elementUUID, state, processContext)
-		if err != nil {
-			// skip error
-			continue
-		}
-
-		// в зависимости от состояния отправляем соответствующие события
-	}
-	return nil
-}
-
+*/
 func (pe *ProcessExecutor) SetLogger(ctx context.Context, fn func(ctx context.Context, msg string) error) error {
 	pe.fnDebug = fn
 	return nil
@@ -819,6 +822,7 @@ type StoreProcessContext struct {
 	ProcessElementData *ProcessElementData
 	IsFinish           bool
 	IsWait             bool
+	ProcessName        string
 }
 
 func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string, vars []*entity.Variable) (*Process, error) {
@@ -875,8 +879,9 @@ func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string,
 	pe.executedProcessByUUID[process.UUID] = process
 
 	spc := &StoreProcessContext{
-		ProcessID: process.UUID,
-		Ctx:       process.Context,
+		ProcessID:   process.UUID,
+		Ctx:         process.Context,
+		ProcessName: processName,
 	}
 	dataRaw, err := json.Marshal(spc)
 	if err != nil {
@@ -899,38 +904,105 @@ func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string,
 	return process, nil
 }
 
-func (pe *ProcessExecutor) ContinueProcess(
+type ProcessExecutorStateItem struct {
+	ProcessID     string
+	ProcessName   string
+	State         string
+	Execute       string
+	ProcessStates []string
+}
+
+func (pe *ProcessExecutor) ContinueProcessExecutor(
 	ctx context.Context,
-	processName string,
-	processID string,
-	elementUUID string,
-	state string,
-	processContext *entity.Context,
-) (*Process, error) {
-	currentProcess, ok := pe.processByProcessName[processName]
-	if !ok {
-		return nil, fmt.Errorf("process %v not found", processName)
-	}
-	// ищем элемент у которого есть только выходы
-	var currentElement *entity.Element
-	for i := range currentProcess.Elements {
-		if currentProcess.Elements[i].UUID == elementUUID {
-			currentElement = currentProcess.Elements[i]
+	processExecutor string,
+	processExecutorStateItem []*ProcessExecutorStateItem,
+) error {
+	/*
+		var processID string
+		var elementUUID string
+		var state string
+		var processContext *entity.Context
+	*/
+	for i := range processExecutorStateItem {
+		if len(processExecutorStateItem[i].ProcessName) == 0 {
+			continue
+		}
+		currentProcess, ok := pe.processByProcessName[processExecutorStateItem[i].ProcessName]
+		if !ok {
+			process, err := pe.loaderClient.LoadProcessDiagramm(processExecutorStateItem[i].ProcessName)
+			if err != nil {
+				return fmt.Errorf("process %v not found", processExecutorStateItem[i].ProcessName)
+			}
+			pe.processByProcessName[processExecutorStateItem[i].ProcessName] = process
+			currentProcess = process
+		}
+		// ищем последний контекст
+		var processContext *entity.Context
+		var lastSPC *StoreProcessContext
+		var msg *ChannelMessage
+		state := ""
+		for j := range processExecutorStateItem[i].ProcessStates {
+			if len(processExecutorStateItem[i].ProcessStates[j]) == 0 {
+				continue
+			}
+			var spc StoreProcessContext
+			err := json.Unmarshal([]byte(processExecutorStateItem[i].ProcessStates[j]), &spc)
+			if err != nil {
+				return fmt.Errorf("failed unmarshal state %v process %v %v: %w", processExecutorStateItem[i].ProcessStates[j],
+					processExecutorStateItem[i].ProcessName, processExecutorStateItem[i].ProcessID, err)
+			}
+			if spc.Ctx != nil {
+				processContext = spc.Ctx
+			}
+			lastSPC = &spc
+			if spc.Msg != nil {
+				msg = spc.Msg
+			}
+		}
+		if processContext == nil {
+			continue
+		}
+		if msg == nil {
+			continue
+		}
+
+		process := NewProcess(processContext)
+		process.process = currentProcess
+
+		for i := range currentProcess.Elements {
+			process.elementByUUID[currentProcess.Elements[i].UUID] = currentProcess.Elements[i]
+		}
+
+		pe.processes = append(pe.processes, process)
+		pe.executedProcessByUUID[process.UUID] = process
+
+		state = processExecutorStateItem[i].Execute
+
+		err := pe.ProcessLoad(ctx, state, msg, lastSPC)
+		if err != nil {
+			return fmt.Errorf("failed load process %v %v: %w", processExecutorStateItem[i].ProcessName,
+				processExecutorStateItem[i].ProcessID, err)
 		}
 	}
-	if currentElement == nil {
-		return nil, fmt.Errorf("element not found")
-	}
 
-	process := NewProcess(processContext)
-	process.process = currentProcess
+	go pe.broker()
+	/*
+		currentProcess, ok := pe.processByProcessName[processName]
+		if !ok {
+			return fmt.Errorf("process %v not found", processName)
+		}
 
-	for i := range currentProcess.Elements {
-		process.elementByUUID[currentProcess.Elements[i].UUID] = currentProcess.Elements[i]
-	}
-
-	pe.processes = append(pe.processes, process)
-	pe.executedProcessByUUID[process.UUID] = process
+		// ищем элемент у которого есть только выходы
+		var currentElement *entity.Element
+		for i := range currentProcess.Elements {
+			if currentProcess.Elements[i].UUID == elementUUID {
+				currentElement = currentProcess.Elements[i]
+			}
+		}
+		if currentElement == nil {
+			return fmt.Errorf("element not found")
+		}
+	*/
 
 	/*
 		for i := range currentElements {
@@ -942,7 +1014,7 @@ func (pe *ProcessExecutor) ContinueProcess(
 		}
 	*/
 
-	return process, nil
+	return nil
 }
 
 type ProcessContext struct {
@@ -1584,13 +1656,13 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 	return nil
 }
 
-func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, spc *StoreProcessContext) error {
+func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *ChannelMessage, spc *StoreProcessContext) error {
 	isWait := false
 	var err error
 	var dataRaw []byte
 
 	process := pe.GetProcess(spc.ProcessID)
-	msg := spc.Msg
+	// msg := spc.Msg
 	if pe.fnDebug != nil {
 		pe.fnDebug(ctx, fmt.Sprintf("Current element %v %v %v", msg.CurrentElement.ElementType, msg.CurrentElement.CamundaModelerID, msg.CurrentElement.CamundaModelerName))
 	}

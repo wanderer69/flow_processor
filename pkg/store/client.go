@@ -21,7 +21,7 @@ type LoadStoredProcessesListCallback func() ([]*InternalProcess, error)
 type StoreProcessExecutorStateCallback func(processExecutor string, processExecutorContext string) error
 type LoadProcessExecutorStateCallback func(processExecutor string) (string, error)
 type StoreStartProcessStateCallback func(processExecutor, processID, processExecutorState string) error
-type StoreChangeProcessStateCallback func(processExecutor, processID, processState string) error
+type StoreChangeProcessStateCallback func(processExecutor, processID, processState string, data string) error
 type StoreFinishProcessStateCallback func(processExecutor, processID, processExecutorState string) error
 
 type Store struct {
@@ -186,7 +186,7 @@ func (s *Store) StoreStartProcessState(processExecutor, processID string, proces
 
 func (s *Store) StoreChangeProcessState(processExecutor, processID string, processState string, data string) error {
 	if s.storeChangeProcessStateCallback != nil {
-		return s.storeChangeProcessStateCallback(processExecutor, processID, processState)
+		return s.storeChangeProcessStateCallback(processExecutor, processID, processState, data)
 	}
 	return fmt.Errorf("store change process state callback not found")
 }

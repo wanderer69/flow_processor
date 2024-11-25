@@ -1574,7 +1574,7 @@ func TestProcessSimpleVI(t *testing.T) {
 	<-pe.Stopped
 }
 
-func TestProcessSimpleIProcessRestarted(t *testing.T) {
+func TestProcessSimpleIProcessRestartedI(t *testing.T) {
 	ctx := context.Background()
 
 	topicClient := externaltopic.NewExternalTopic()
@@ -1760,6 +1760,321 @@ func TestProcessSimpleIProcessRestarted(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 50)
 	stop <- struct{}{}
+
+	<-pe.Stopped
+}
+
+func TestProcessSimpleIProcessRestartedII(t *testing.T) {
+	ctx := context.Background()
+
+	topicClient := externaltopic.NewExternalTopic()
+	timerClient := timer.NewTimer()
+	externalActivationClient := externalactivation.NewExternalActivation()
+	testClient := NewTestClient(topicClient)
+	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
+	internalFormatClient := internalformat.NewInternalFormat()
+	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
+	storeClient := store.NewStore(loader)
+	stop := make(chan struct{})
+
+	currentProcessName := "test_process"
+	topic1 := "topic1"
+	topic2 := "topic2"
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+
+	/*
+	   тестовая последовательность
+	   1. старт -> подаем переменные a b
+	   2. service task -> получает переменные, вызывает внешнюю таску, передает переменные
+	   3. user task -> передает полученные переменные
+	   4. service task -> получает переменные, вызывает внешнюю таску, передает переменные
+	   5. стоп
+	*/
+	e1 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeStartEvent,
+	}
+
+	f1 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeFlow,
+	}
+
+	e2 := &entity.Element{
+		UUID:              uuid.NewString(),
+		ActivationType:    entity.ActivationTypeInternal,
+		ElementType:       entity.ElementTypeServiceTask,
+		IsExternalByTopic: true,
+		TopicName:         topic1,
+	}
+
+	f2 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeFlow,
+	}
+
+	e3 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeExternal,
+		ElementType:    entity.ElementTypeUserTask,
+	}
+
+	f3 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeFlow,
+	}
+
+	e4 := &entity.Element{
+		UUID:              uuid.NewString(),
+		ActivationType:    entity.ActivationTypeInternal,
+		ElementType:       entity.ElementTypeServiceTask,
+		IsExternalByTopic: true,
+		TopicName:         topic2,
+	}
+
+	f4 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeFlow,
+	}
+
+	e5 := &entity.Element{
+		UUID:           uuid.NewString(),
+		ActivationType: entity.ActivationTypeInternal,
+		ElementType:    entity.ElementTypeEndEvent,
+	}
+
+	e1.OutputsElementID = append(e1.OutputsElementID, f1.UUID)
+
+	f1.InputsElementID = append(f1.InputsElementID, e1.UUID)
+	f1.OutputsElementID = append(f1.OutputsElementID, e2.UUID)
+
+	e2.InputsElementID = append(e2.InputsElementID, f1.UUID)
+	e2.OutputsElementID = append(e2.OutputsElementID, f2.UUID)
+
+	f2.InputsElementID = append(f2.InputsElementID, e2.UUID)
+	f2.OutputsElementID = append(f2.OutputsElementID, e3.UUID)
+
+	e3.InputsElementID = append(e3.InputsElementID, f2.UUID)
+	e3.OutputsElementID = append(e3.OutputsElementID, f3.UUID)
+
+	f3.InputsElementID = append(f3.InputsElementID, e3.UUID)
+	f3.OutputsElementID = append(f3.OutputsElementID, e4.UUID)
+
+	e4.InputsElementID = append(e4.InputsElementID, f3.UUID)
+	e4.OutputsElementID = append(e4.OutputsElementID, f4.UUID)
+
+	f4.InputsElementID = append(f4.InputsElementID, e4.UUID)
+	f4.OutputsElementID = append(f4.OutputsElementID, e5.UUID)
+
+	e5.InputsElementID = append(e5.InputsElementID, f4.UUID)
+
+	p := &entity.Process{
+		Name: currentProcessName,
+		Elements: []*entity.Element{
+			e1,
+			f1,
+			e2,
+			f2,
+			e3,
+			f3,
+			e4,
+			f4,
+			e5,
+		},
+	}
+
+	msg1 := &entity.Message{
+		Name: "msg1",
+		Fields: []*entity.Field{
+			{
+				Name:  "field1",
+				Type:  "string",
+				Value: "test1",
+			},
+		},
+	}
+	var1 := &entity.Variable{
+		Name:  "var1",
+		Type:  "string",
+		Value: "var_value1",
+	}
+
+	require.NoError(t, pe.AddProcess(ctx, p))
+	var currentProcessId *string
+
+	pe.SetLogger(ctx, func(ctx context.Context, msg string) error {
+		fmt.Printf("%v\r\n", msg)
+		return nil
+	})
+
+	testClient.topicClient.SetTopicHandler(ctx, currentProcessName, topic1, func(processName, processId, topicName string, msgs []*entity.Message, vars []*entity.Variable) error {
+		require.Equal(t, *currentProcessId, processId)
+		require.Equal(t, currentProcessName, currentProcessName)
+		require.Equal(t, topic1, topicName)
+		require.NoError(t, testClient.topicClient.CompleteTopic(ctx, processName, processId, topic1, []*entity.Message{msg1}, []*entity.Variable{var1}))
+		return nil
+	})
+
+	msg2 := &entity.Message{
+		Name: "msg2",
+		Fields: []*entity.Field{
+			{
+				Name:  "field2",
+				Type:  "string",
+				Value: "test2",
+			},
+		},
+	}
+	var2 := &entity.Variable{
+		Name:  "var2",
+		Type:  "string",
+		Value: "var_value2",
+	}
+
+	testClient.topicClient.SetTopicHandler(ctx, currentProcessName, topic2, func(processName, processId, topicName string, msgs []*entity.Message, vars []*entity.Variable) error {
+		require.Equal(t, *currentProcessId, processId)
+		require.Equal(t, currentProcessName, currentProcessName)
+		require.Equal(t, topic2, topicName)
+		testClient.topicClient.CompleteTopic(ctx, processName, processId, topicName, []*entity.Message{msg2}, []*entity.Variable{var2})
+		return nil
+	})
+
+	processByProcessName := make(map[string]string)
+
+	storeProcessDiagrammCallback := func(processName string, processDiagramm string) error {
+		processByProcessName[processName] = processDiagramm
+		return nil
+	}
+
+	loadProcessDiagrammCallback := func(processName string) (string, error) {
+		processDiagramm, ok := processByProcessName[processName]
+		if !ok {
+			return "", fmt.Errorf("diagramm %v not found", processName)
+		}
+		return processDiagramm, nil
+	}
+
+	/*
+	   storeProcessStateCallback := func(processName string, processID string, processContext string) error
+	   loadProcessStateCallback := func(processName string, processID string) (string, error)
+	   loadStoredProcessesListCallback := func() ([]*InternalProcess, error)
+	   storeProcessExecutorStateCallback := func(processExecutor string, processExecutorContext string) error
+	   loadProcessExecutorStateCallback := func(processExecutor string) (string, error)
+	*/
+
+	// processExecutorByProcessName := make(map[string]string)
+	type processExecutorStateRecord struct {
+		processExecutor string
+		processID       string
+		//		processExecutorState string
+		processState string
+		data         string
+		state        string
+	}
+
+	processExecutorStates := []*processExecutorStateRecord{}
+
+	storeStartProcessStateCallback := func(processExecutor, processID, processExecutorState string) error {
+		pes := &processExecutorStateRecord{
+			processExecutor: processExecutor,
+			processID:       processID,
+			processState:    processExecutorState,
+			state:           "start",
+		}
+		processExecutorStates = append(processExecutorStates, pes)
+		return nil
+	}
+
+	storeChangeProcessStateCallback := func(processExecutor, processID, processState string, data string) error {
+		pes := &processExecutorStateRecord{
+			processExecutor: processExecutor,
+			processID:       processID,
+			processState:    processState,
+			state:           "change",
+			data:            data,
+		}
+		processExecutorStates = append(processExecutorStates, pes)
+		return nil
+	}
+
+	storeFinishProcessStateCallback := func(processExecutor, processID, processExecutorState string) error {
+		pes := &processExecutorStateRecord{
+			processExecutor: processExecutor,
+			processID:       processID,
+			processState:    processExecutorState,
+			state:           "finish",
+		}
+		processExecutorStates = append(processExecutorStates, pes)
+		return nil
+	}
+
+	storeClient.SetStoreProcessDiagramm(storeProcessDiagrammCallback)
+	storeClient.SetLoadProcessDiagramm(loadProcessDiagrammCallback)
+	storeClient.SetStoreStartProcessStateCallback(storeStartProcessStateCallback)
+	storeClient.SetStoreChangeProcessStateCallback(storeChangeProcessStateCallback)
+	storeClient.SetStoreFinishProcessStateCallback(storeFinishProcessStateCallback)
+
+	process, err := pe.StartProcess(ctx, currentProcessName, nil)
+	require.NoError(t, err)
+	currentProcessId = &process.UUID
+
+	time.Sleep(time.Millisecond * 30)
+	stop <- struct{}{}
+
+	for i := range processExecutorStates {
+		//fmt.Printf("%v %v %v\r\n", processExecutorStates[i].processExecutor, processExecutorStates[i].processID, processExecutorStates[i].processState)
+		if len(processExecutorStates[i].data) > 0 {
+			var dt map[string]interface{}
+			require.NoError(t, json.Unmarshal([]byte(processExecutorStates[i].data), &dt))
+			//dataRaw, err := json.MarshalIndent(&dt, " ", "  ")
+			//require.NoError(t, err)
+			//fmt.Printf("%v\r\n", string(dataRaw))
+		}
+	}
+	<-pe.Stopped
+
+	processExecutorStateItems := []*ProcessExecutorStateItem{}
+	processExecutorUUID := ""
+	processStateByProcessID := make(map[string]*ProcessExecutorStateItem)
+
+	for i := range processExecutorStates {
+		processExecutorStateItem, ok := processStateByProcessID[processExecutorStates[i].processID]
+		if !ok {
+			processName := ""
+			var spc StoreProcessContext
+			if len(processExecutorStates[i].processState) > 0 {
+				require.NoError(t, json.Unmarshal([]byte(processExecutorStates[i].processState), &spc))
+				if len(spc.ProcessName) > 0 {
+					processName = spc.ProcessName
+				}
+			}
+			if len(processExecutorStates[i].processExecutor) > 0 {
+				processExecutorUUID = processExecutorStates[i].processExecutor
+			}
+			processExecutorStateItem = &ProcessExecutorStateItem{
+				ProcessID:   processExecutorStates[i].processID, //string
+				ProcessName: processName,                        //string
+			}
+		}
+		processExecutorStateItem.State = processExecutorStates[i].processState
+		if len(processExecutorStates[i].processState) > 0 {
+			processExecutorStateItem.Execute = processExecutorStates[i].processState
+			processExecutorStateItem.State = "start_process"
+		}
+		processExecutorStateItem.ProcessStates = append(processExecutorStateItem.ProcessStates, processExecutorStates[i].data)
+		processStateByProcessID[processExecutorStates[i].processID] = processExecutorStateItem
+	}
+	for i := range processStateByProcessID {
+		processExecutorStateItems = append(processExecutorStateItems, processStateByProcessID[i])
+	}
+	//processExecutorState := processExecutorStates[len(processExecutorStates)-1]
+
+	require.NoError(t, pe.ContinueProcessExecutor(ctx, processExecutorUUID, processExecutorStateItems))
 
 	<-pe.Stopped
 }
