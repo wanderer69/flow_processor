@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package frontprocessorclient;
+option go_package="../pkg/gen";
+
+service ClientConnector {
+  rpc Login(LoginRequest) returns (LoginResponse) {}
+  rpc Connect (stream Request) returns (stream Response) {}
+}
+
+message LoginRequest {
+  string login = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string token = 1;
+  optional string error = 2;
+}
+
+message ListProcessesRequest {
+  string token = 1;
+}
+
+message Process {
+  string process_id = 1;
+  string application_id = 2;
+  string state = 3;
+}
+
+message ListProcessesResponse {
+  repeated Process processes = 1;
+  optional string error = 2;
+}
+
+message ListProcessFlowsRequest {
+  string token = 1;
+  string process_id = 2;
+}
+
+message ProcessFlow {
+  string process_id = 1;
+  string flow_id = 2;
+  string state = 3;
+}
+
+message ListProcessFlowsResponse {
+  repeated ProcessFlow process_flows = 1;
+  optional string error = 2;
+}
+
+message Request {
+  int32 id = 1;
+  string msg = 2;
+  optional ListProcessesRequest list_processes_request = 3;
+  optional ListProcessFlowsRequest list_process_flows_request = 4;
+}
+
+message Response {
+  int32 id = 1;
+  string msg = 2;
+  optional ListProcessesRequest list_processes_response = 3;
+  optional ListProcessFlowsRequest list_process_flows_response = 4;
+}

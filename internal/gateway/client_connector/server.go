@@ -16,7 +16,7 @@ import (
 	internalformat "github.com/wanderer69/flow_processor/pkg/internal_format"
 	"github.com/wanderer69/flow_processor/pkg/loader"
 	"github.com/wanderer69/flow_processor/pkg/process"
-	pb "github.com/wanderer69/flow_processor/pkg/proto"
+	pb "github.com/wanderer69/flow_processor/pkg/proto/client"
 )
 
 type Handler struct {
@@ -216,12 +216,12 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 			logger.Info("Connect: failed recieve", zap.Error(err))
 			continue
 		}
-		/*
-			// анализ в зависимости от состояния - state = 0 может быть либо подключение к процессу либо старт процесса state = 1 ответ от топика или отправка сообщения
-			if req.ConnectToProcessRequest != nil {
 
-			}
-		*/
+		// анализ в зависимости от состояния - state = 0 может быть либо подключение к процессу либо старт процесса state = 1 ответ от топика или отправка сообщения
+		if req.ConnectToProcessRequest != nil {
+			// req.ConnectToProcessRequest.ProcessId
+		}
+
 		if req.StartProcessRequest != nil {
 			errorResult := ""
 			result := "Ok"

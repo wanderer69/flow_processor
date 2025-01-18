@@ -1,0 +1,163 @@
+.desctop-process-control,
+.desctop-process-control * {
+  box-sizing: border-box;
+}
+.desctop-process-control {
+  background: #ffffff;
+  padding: 0.625rem;
+  display: flex;
+  flex-direction: row;
+  gap: 0.625rem;
+  align-items: flex-start;
+  justify-content: flex-start;
+  height: 48rem;
+  position: relative;
+  overflow: hidden;
+}
+.group-top-bar {
+  flex-shrink: 0;
+  width: 62.5rem;
+  height: 1.125rem;
+  position: static;
+}
+.rectangle-18 {
+  background: #d7f8ff;
+  width: 62.5rem;
+  height: 1.125rem;
+  position: absolute;
+  left: 0.875rem;
+  top: 0.625rem;
+}
+.process-executor {
+  color: #000000;
+  text-align: left;
+  font-family: "Inter-Regular", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 400;
+  position: absolute;
+  left: 2.375rem;
+  top: 0.625rem;
+  width: 6.1875rem;
+  height: 1.125rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.group-process-information {
+  flex-shrink: 0;
+  width: 62.5rem;
+  height: 15.4375rem;
+  position: static;
+}
+.rectangle-182 {
+  background: #fdffe7;
+  width: 62.5rem;
+  height: 15.4375rem;
+  position: absolute;
+  left: 0.875rem;
+  top: 31.5625rem;
+}
+.rectangle-183 {
+  background: #ffe9cb;
+  width: 62.5rem;
+  height: 0.9375rem;
+  position: absolute;
+  left: 0.875rem;
+  top: 31.5625rem;
+}
+.process-information {
+  color: #000000;
+  text-align: left;
+  font-family: "Inter-Regular", sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  position: absolute;
+  left: 2.375rem;
+  top: 31.8125rem;
+  width: 7.0625rem;
+  height: 0.4375rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.group-table-process-information {
+  width: 61.75rem;
+  height: 13.75rem;
+  position: static;
+}
+.table-process-info {
+  background: #ffeded;
+  width: 61.75rem;
+  height: 13.75rem;
+  position: absolute;
+  left: 1.3125rem;
+  top: 33rem;
+}
+.group-processes-list {
+  flex-shrink: 0;
+  width: 62.5rem;
+  height: 28.875rem;
+  position: static;
+}
+.rectangle-184 {
+  background: #fdffe7;
+  width: 62.5rem;
+  height: 28.875rem;
+  position: absolute;
+  left: 0.875rem;
+  top: 2.25rem;
+}
+.rectangle-185 {
+  background: #ffe9cb;
+  width: 62.5rem;
+  height: 0.9375rem;
+  position: absolute;
+  left: 0.875rem;
+  top: 2.25rem;
+}
+.processes-list {
+  color: #000000;
+  text-align: left;
+  font-family: "Inter-Regular", sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  position: absolute;
+  left: 2.375rem;
+  top: 2.3125rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.group-table-processes-list {
+  width: 61.75rem;
+  height: 27.1875rem;
+  position: static;
+}
+.table-processes-list {
+  background: #ffeded;
+  width: 61.75rem;
+  height: 27.1875rem;
+  position: absolute;
+  left: 1.3125rem;
+  top: 3.5rem;
+}
+
+.hoverTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.hoverTable td {
+  padding: 7px;
+  border: #4e95f4 1px solid;
+}
+
+/* Define the default color for all the table rows */
+.hoverTable tr {
+  background: #b8d1f3;
+}
+
+/* Define the hover highlight color for the table row */
+.hoverTable tbody tr:hover {
+  background-color: #ffff99;
+}

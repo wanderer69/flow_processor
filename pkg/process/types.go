@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/wanderer69/flow_processor/pkg/entity"
-	"github.com/wanderer69/flow_processor/pkg/store"
 	"github.com/wanderer69/flow_processor/pkg/timer"
 )
 
+//go:generate mockgen -source=types.go -destination=mocks_test.go -package=process
 type ExternalTopic interface {
 	Init(ctx context.Context, processName string, topicName string) error
 	Send(ctx context.Context, processName, processId, topicName string, msgs []*entity.Message, vars []*entity.Variable) error
@@ -30,16 +30,14 @@ type ExternalActivation interface {
 	SetActivationResponse(ctx context.Context, processName, taskName string, fn func(processName, processId, taskName string, msgs []*entity.Message, vars []*entity.Variable) error) error
 }
 
-type LoaderClient interface {
-	StoreProcessState(processName, processID, elementUUID string, state string, ctx *entity.Context) error
-	LoadProcessState(processName, processID string) (string, string, string, string, *entity.Context, error)
-	LoadStoredProcessesList() ([]*store.InternalProcess, error)
-	LoadProcessDiagramm(processName string) (*entity.Process, error)
-	StoreProcessDiagramm(processName string, process *entity.Process) error
-	StoreProcessExecutorState(processExecutor, processExecutorState string) error
-	LoadProcessExecutorState(processExecutor string) (string, error)
+type StoreClient interface {
+	LoadProcessDiagramm(ctx context.Context, processName string) (*entity.Process, error)
+	//StoreProcessDiagramm(processName string, process *entity.Process) error
 
-	StoreStartProcessState(processExecutor, processID string, data string) error
-	StoreChangeProcessState(processExecutor, processID string, processExecutorState string, data string) error
-	StoreFinishProcessState(processExecutor, processID string, processExecutorState string) error
+	// LoadProcessExecutorState(processExecutor string) (string, error)
+	StoreStartProcessState(ctx context.Context, processExecutor, processID string, data string) error
+	StoreChangeProcessState(ctx context.Context, processExecutor, processID string, processExecutorState string, data string) error
+	StoreFinishProcessState(ctx context.Context, processExecutor, processID string, processExecutorState string) error
+
+	LoadProcessStates(ctx context.Context, processExecutor string) ([]*entity.ProcessExecutorStateItem, error)
 }

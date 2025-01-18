@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/wanderer69/flow_processor/pkg/entity"
-	pb "github.com/wanderer69/flow_processor/pkg/proto"
+	pb "github.com/wanderer69/flow_processor/pkg/proto/client"
 	"go.uber.org/zap"
 
 	"google.golang.org/grpc"

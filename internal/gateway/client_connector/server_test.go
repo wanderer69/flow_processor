@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+
 	camunda7convertor "github.com/wanderer69/flow_processor/pkg/camunda_7_convertor"
 	"github.com/wanderer69/flow_processor/pkg/entity"
 	externalactivation "github.com/wanderer69/flow_processor/pkg/external_activation"
@@ -23,14 +25,18 @@ import (
 func TestServerSimpleI(t *testing.T) {
 	ctx := context.Background()
 	logger.SetLogger()
+	ctrl := gomock.NewController(t)
 
 	topicClient := externaltopic.NewExternalTopic()
 	timerClient := timer.NewTimer()
 	externalActivationClient := externalactivation.NewExternalActivation()
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
+
 	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
-	storeClient := store.NewStore(loader)
+	processRepo := NewMockprocessRepository(ctrl)
+	diagrammRepo := NewMockdiagrammRepository(ctrl)
+	storeClient := store.NewStore(loader, processRepo, diagrammRepo)
 	stop := make(chan struct{})
 
 	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
@@ -87,6 +93,79 @@ func TestServerSimpleI(t *testing.T) {
 
 	var currentProcessId *string
 	processRawFull := makeDiagrammI(t, currentProcessName, topic1, topic2)
+
+	processByProcessName := make(map[string]*entity.Diagramm)
+
+	diagrammRepo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *entity.Diagramm) error {
+		processByProcessName[c.Name] = c
+		return nil
+	}).AnyTimes()
+
+	diagrammRepo.EXPECT().GetByName(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, name string) ([]*entity.Diagramm, error) {
+		processDiagramm, ok := processByProcessName[name]
+		if !ok {
+			return nil, fmt.Errorf("diagramm %v not found", name)
+		}
+		return []*entity.Diagramm{processDiagramm}, nil
+	}).AnyTimes()
+
+	processExecutorStatesByProcessName := make(map[string][]*entity.StoreProcess)
+	processExecutorStates := []*entity.StoreProcess{}
+
+	processRepo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *entity.StoreProcess) error {
+		processExecutorStates = append(processExecutorStates, c)
+		p, ok := processExecutorStatesByProcessName[c.ProcessID]
+		if !ok {
+			p = []*entity.StoreProcess{}
+		}
+		p = append(p, c)
+		processExecutorStatesByProcessName[c.ProcessID] = p
+		return nil
+	}).AnyTimes()
+
+	processRepo.EXPECT().GetByProcessID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, processID string) ([]*entity.StoreProcess, error) {
+		p, ok := processExecutorStatesByProcessName[processID]
+		if !ok {
+			return nil, fmt.Errorf("not found process by id %v", processID)
+		}
+		return p, nil
+	}).AnyTimes()
+
+	processRepo.EXPECT().DeleteByProcessID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, processID string) error {
+		if len(processExecutorStates) == 0 {
+			posForDelete := []int{}
+			for i := range processExecutorStates {
+				if len(processExecutorStates[i].ProcessID) > 0 {
+					if processExecutorStates[i].ProcessID == processID {
+						posForDelete = append(posForDelete, i)
+					}
+				}
+			}
+			for i := len(posForDelete) - 1; i >= 0; i-- {
+				processExecutorStates = append(processExecutorStates[:posForDelete[i]], processExecutorStates[posForDelete[i]+1:]...)
+			}
+		}
+
+		delete(processExecutorStatesByProcessName, processID)
+		return nil
+	}).AnyTimes()
+
+	processRepo.EXPECT().GetNotFinishedByExecutorID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, executorID string) ([]*entity.StoreProcess, error) {
+		processesStates := []*entity.StoreProcess{}
+		for _, processStates := range processExecutorStatesByProcessName {
+			isFinished := false
+			for i := range processStates {
+				if len(processStates[i].ProcessState) == 0 {
+					isFinished = true
+				}
+			}
+			if !isFinished {
+				processesStates = append(processesStates, processStates...)
+			}
+		}
+		return processesStates, nil
+	}).AnyTimes()
+
 	require.NoError(t, client.AddProcess(ctx, processRawFull))
 
 	done := make(chan bool)
@@ -127,14 +206,18 @@ func TestServerSimpleI(t *testing.T) {
 func TestProcessSimpleII(t *testing.T) {
 	ctx := context.Background()
 	logger.SetLogger()
+	ctrl := gomock.NewController(t)
 
 	topicClient := externaltopic.NewExternalTopic()
 	timerClient := timer.NewTimer()
 	externalActivationClient := externalactivation.NewExternalActivation()
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
+
 	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
-	storeClient := store.NewStore(loader)
+	processRepo := NewMockprocessRepository(ctrl)
+	diagrammRepo := NewMockdiagrammRepository(ctrl)
+	storeClient := store.NewStore(loader, processRepo, diagrammRepo)
 	stop := make(chan struct{})
 
 	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
@@ -192,6 +275,79 @@ func TestProcessSimpleII(t *testing.T) {
 
 	var currentProcessId *string
 	processRawFull := makeDiagrammII(t, currentProcessName, topic1, topic2, taskName3)
+
+	processByProcessName := make(map[string]*entity.Diagramm)
+
+	diagrammRepo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *entity.Diagramm) error {
+		processByProcessName[c.Name] = c
+		return nil
+	}).AnyTimes()
+
+	diagrammRepo.EXPECT().GetByName(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, name string) ([]*entity.Diagramm, error) {
+		processDiagramm, ok := processByProcessName[name]
+		if !ok {
+			return nil, fmt.Errorf("diagramm %v not found", name)
+		}
+		return []*entity.Diagramm{processDiagramm}, nil
+	}).AnyTimes()
+
+	processExecutorStatesByProcessName := make(map[string][]*entity.StoreProcess)
+	processExecutorStates := []*entity.StoreProcess{}
+
+	processRepo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, c *entity.StoreProcess) error {
+		processExecutorStates = append(processExecutorStates, c)
+		p, ok := processExecutorStatesByProcessName[c.ProcessID]
+		if !ok {
+			p = []*entity.StoreProcess{}
+		}
+		p = append(p, c)
+		processExecutorStatesByProcessName[c.ProcessID] = p
+		return nil
+	}).AnyTimes()
+
+	processRepo.EXPECT().GetByProcessID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, processID string) ([]*entity.StoreProcess, error) {
+		p, ok := processExecutorStatesByProcessName[processID]
+		if !ok {
+			return nil, fmt.Errorf("not found process by id %v", processID)
+		}
+		return p, nil
+	}).AnyTimes()
+
+	processRepo.EXPECT().DeleteByProcessID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, processID string) error {
+		if len(processExecutorStates) == 0 {
+			posForDelete := []int{}
+			for i := range processExecutorStates {
+				if len(processExecutorStates[i].ProcessID) > 0 {
+					if processExecutorStates[i].ProcessID == processID {
+						posForDelete = append(posForDelete, i)
+					}
+				}
+			}
+			for i := len(posForDelete) - 1; i >= 0; i-- {
+				processExecutorStates = append(processExecutorStates[:posForDelete[i]], processExecutorStates[posForDelete[i]+1:]...)
+			}
+		}
+
+		delete(processExecutorStatesByProcessName, processID)
+		return nil
+	}).AnyTimes()
+
+	processRepo.EXPECT().GetNotFinishedByExecutorID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, executorID string) ([]*entity.StoreProcess, error) {
+		processesStates := []*entity.StoreProcess{}
+		for _, processStates := range processExecutorStatesByProcessName {
+			isFinished := false
+			for i := range processStates {
+				if len(processStates[i].ProcessState) == 0 {
+					isFinished = true
+				}
+			}
+			if !isFinished {
+				processesStates = append(processesStates, processStates...)
+			}
+		}
+		return processesStates, nil
+	}).AnyTimes()
+
 	require.NoError(t, client.AddProcess(ctx, processRawFull))
 
 	userProcess := make(chan bool)

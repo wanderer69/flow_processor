@@ -1,5 +1,7 @@
 package entity
 
+import "time"
+
 type Definition struct {
 	Name             string
 	Version          string
@@ -12,4 +14,14 @@ type Process struct {
 	Version          string
 	CamundaModelerID string
 	Elements         []*Element
+}
+
+type ChannelMessage struct {
+	CurrentElement *Element
+
+	Variables         []*Variable
+	Messages          []*Message
+	ActivationTime    time.Time
+	ProcessID         string
+	NextElementsNames []string
 }

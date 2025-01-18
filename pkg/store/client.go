@@ -1,9 +1,11 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/wanderer69/flow_processor/pkg/entity"
 )
 
@@ -12,188 +14,213 @@ type InternalProcess struct {
 	ProcessID   string
 }
 
-type StoreProcessDiagrammCallback func(processName string, processDiagramm string) error
-type LoadProcessDiagrammCallback func(processName string) (string, error)
-
-type StoreProcessStateCallback func(processName string, processID string, processContext string) error
-type LoadProcessStateCallback func(processName string, processID string) (string, error)
-type LoadStoredProcessesListCallback func() ([]*InternalProcess, error)
-type StoreProcessExecutorStateCallback func(processExecutor string, processExecutorContext string) error
-type LoadProcessExecutorStateCallback func(processExecutor string) (string, error)
-type StoreStartProcessStateCallback func(processExecutor, processID, processExecutorState string) error
-type StoreChangeProcessStateCallback func(processExecutor, processID, processState string, data string) error
-type StoreFinishProcessStateCallback func(processExecutor, processID, processExecutorState string) error
-
-type Store struct {
-	storeProcessDiagrammCallback      StoreProcessDiagrammCallback
-	loadProcessDiagrammCallback       LoadProcessDiagrammCallback
-	storeProcessStateCallback         StoreProcessStateCallback
-	loadProcessStateCallback          LoadProcessStateCallback
-	loadStoredProcessesListCallback   LoadStoredProcessesListCallback
-	storeProcessExecutorStateCallback StoreProcessExecutorStateCallback
-	loadProcessExecutorStateCallback  LoadProcessExecutorStateCallback
-	loader                            Loader
-	storeFinishProcessStateCallback   StoreFinishProcessStateCallback
-	storeChangeProcessStateCallback   StoreChangeProcessStateCallback
-	storeStartProcessStateCallback    StoreStartProcessStateCallback
+type ProcessStateItem struct {
+	ProcessExecutor      string
+	ProcessID            string
+	ProcessExecutorState string
+	State                string
+	Data                 string
 }
 
-func NewStore(loader Loader) *Store {
+type Store struct {
+	loader loader
+
+	processRepository  processRepository
+	diagrammRepository diagrammRepository
+}
+
+func NewStore(
+	loader loader,
+	processRepository processRepository,
+	diagrammRepository diagrammRepository,
+) *Store {
 	return &Store{
-		loader: loader,
+		loader:             loader,
+		processRepository:  processRepository,
+		diagrammRepository: diagrammRepository,
 	}
 }
 
-func (s *Store) SetStoreProcessDiagramm(fn StoreProcessDiagrammCallback) {
-	s.storeProcessDiagrammCallback = fn
-}
-
-func (s *Store) SetLoadProcessDiagramm(fn LoadProcessDiagrammCallback) {
-	s.loadProcessDiagrammCallback = fn
-}
-
-func (s *Store) SetStoreProcessState(fn StoreProcessStateCallback) {
-	s.storeProcessStateCallback = fn
-}
-
-func (s *Store) SetLoadProcessState(fn LoadProcessStateCallback) {
-	s.loadProcessStateCallback = fn
-}
-
-func (s *Store) SetStoreProcessExecutorState(fn StoreProcessExecutorStateCallback) {
-	s.storeProcessExecutorStateCallback = fn
-}
-
-func (s *Store) SetLoadProcessExecutorState(fn LoadProcessExecutorStateCallback) {
-	s.loadProcessExecutorStateCallback = fn
-}
-
-func (s *Store) SetLoadStoredProcessesListCallback(fn LoadStoredProcessesListCallback) {
-	s.loadStoredProcessesListCallback = fn
-}
-
-func (s *Store) SetStoreStartProcessStateCallback(fn StoreStartProcessStateCallback) {
-	s.storeStartProcessStateCallback = fn
-}
-
-func (s *Store) SetStoreChangeProcessStateCallback(fn StoreChangeProcessStateCallback) {
-	s.storeChangeProcessStateCallback = fn
-}
-
-func (s *Store) SetStoreFinishProcessStateCallback(fn StoreFinishProcessStateCallback) {
-	s.storeFinishProcessStateCallback = fn
-}
-
-func (s *Store) StoreProcessDiagramm(processName string, process *entity.Process) error {
+func (s *Store) StoreProcessDiagramm(ctx context.Context, processName string, process *entity.Process) error {
 	processDiagramm, err := s.loader.Save(process)
 	if err != nil {
 		return err
 	}
 
-	if s.storeProcessDiagrammCallback != nil {
-		return s.storeProcessDiagrammCallback(processName, processDiagramm)
-	}
-	return fmt.Errorf("store diagramm callback not found")
-}
-
-func (s *Store) LoadProcessDiagramm(processName string) (*entity.Process, error) {
-	if s.loadProcessDiagrammCallback != nil {
-		processDiagramm, err := s.loadProcessDiagrammCallback(processName)
-		if err != nil {
-			return nil, err
-		}
-		return s.loader.Load(processDiagramm)
-	}
-	return nil, fmt.Errorf("load diagramm callback not found")
-}
-
-type taskState struct {
-	ProcessName string
-	ProcessID   string
-	ElementUUID string
-	State       string
-	Ctx         *entity.Context
-}
-
-func (s *Store) StoreProcessState(processName, processID, elementUUID string, state string, ctx *entity.Context) error {
-	ts := &taskState{
-		ProcessName: processName,
-		ProcessID:   processID,
-		ElementUUID: elementUUID,
-		State:       state,
-		Ctx:         ctx,
-	}
-	dataRaw, err := json.Marshal(ts)
+	diagramms, err := s.diagrammRepository.GetByName(ctx, processName)
 	if err != nil {
 		return err
 	}
-	if s.storeProcessStateCallback != nil {
-		return s.storeProcessStateCallback(processName, processID, string(dataRaw))
+	if len(diagramms) > 0 {
+		diagramms[0].Data = processDiagramm
+		return s.diagrammRepository.Update(ctx, diagramms[0])
 	}
-	return fmt.Errorf("store process state callback not found")
+	return s.diagrammRepository.Create(ctx, &entity.Diagramm{
+		UUID: uuid.NewString(),
+		Name: processName,
+		Data: processDiagramm,
+	})
 }
 
-func (s *Store) LoadProcessState(processName, processID string) (string, string, string, string, *entity.Context, error) {
-	if s.loadProcessStateCallback == nil {
-		return processName, processID, "", "", nil, fmt.Errorf("load process state callback not found")
-	}
-	dataRaw, err := s.loadProcessStateCallback(processName, processID)
+func (s *Store) LoadProcessDiagramm(ctx context.Context, processName string) (*entity.Process, error) {
+	diagramms, err := s.diagrammRepository.GetByName(ctx, processName)
 	if err != nil {
-		return processName, processID, "", "", nil, err
+		return nil, err
+	}
+	if len(diagramms) > 0 {
+		return s.loader.Load(diagramms[0].Data)
 	}
 
-	var ts taskState
-	err = json.Unmarshal([]byte(dataRaw), &ts)
-	if err != nil {
-		return processName, processID, "", "", nil, err
-	}
-
-	return ts.ProcessName, ts.ProcessID, ts.ElementUUID, ts.State, ts.Ctx, nil
-}
-
-func (s *Store) LoadStoredProcessesList() ([]*InternalProcess, error) {
-	if s.loadStoredProcessesListCallback != nil {
-		return s.loadStoredProcessesListCallback()
-	}
-	return nil, fmt.Errorf("load processes list callback not found")
-}
-
-func (s *Store) StoreProcessExecutorState(processExecutor, processExecutorState string) error {
-	if s.storeProcessExecutorStateCallback != nil {
-		return s.storeProcessExecutorStateCallback(processExecutor, processExecutorState)
-	}
-	return fmt.Errorf("store process executor state callback not found")
+	return nil, fmt.Errorf("%v not found", processName)
 }
 
 func (s *Store) LoadProcessExecutorState(processExecutor string) (string, error) {
-	if s.loadProcessExecutorStateCallback == nil {
-		return "", fmt.Errorf("load process executor state callback not found")
-	}
-	dataRaw, err := s.loadProcessExecutorStateCallback(processExecutor)
+	/*
+	   }
+
+	   processDiagramm, err := s.loader.Save(process)
+	   if err != nil {
+	   	return err
+	   }
+
+	   if s.storeProcessDiagrammCallback != nil {
+	   	return s.storeProcessDiagrammCallback(processName, processDiagramm)
+	   }
+	   return fmt.Errorf("store diagramm callback not found")
+
+	   	if s.loadProcessDiagrammCallback != nil {
+	   		processDiagramm, err := s.loadProcessDiagrammCallback(processName)
+	   		if err != nil {
+	   			return nil, err
+	   		}
+	   		return s.loader.Load(processDiagramm)
+	   	}
+	   	return nil, fmt.Errorf("load diagramm callback not found")
+
+
+
+
+	   	if s.loadProcessExecutorStateCallback == nil {
+	   		return "", fmt.Errorf("load process executor state callback not found")
+	   	}
+	   	dataRaw, err := s.loadProcessExecutorStateCallback(processExecutor)
+	   	if err != nil {
+	   		return "", err
+	   	}
+	*/
+	return "", nil
+}
+
+func (s *Store) LoadProcessStates(ctx context.Context, processExecutor string) ([]*entity.ProcessExecutorStateItem, error) {
+	processExecutorStateItems := []*entity.ProcessExecutorStateItem{}
+	//	processExecutorUUID := ""
+	processStateByProcessID := make(map[string]*entity.ProcessExecutorStateItem)
+
+	processExecutorStates, err := s.processRepository.GetNotFinishedByExecutorID(ctx, processExecutor)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return dataRaw, nil
+	for i := range processExecutorStates {
+		processExecutorStateItem, ok := processStateByProcessID[processExecutorStates[i].ProcessID]
+		if !ok {
+			processName := ""
+			var spc entity.StoreProcessContext
+			if len(processExecutorStates[i].Data) > 0 {
+				err = json.Unmarshal([]byte(processExecutorStates[i].Data), &spc)
+				if err != nil {
+					return nil, err
+				}
+				if len(spc.ProcessName) > 0 {
+					processName = spc.ProcessName
+				}
+			}
+			if len(processExecutorStates[i].UUID) > 0 {
+				//				processExecutorUUID = processExecutorStates[i].ProcessExecutor
+			}
+			processExecutorStateItem = &entity.ProcessExecutorStateItem{
+				ProcessID:   processExecutorStates[i].ProcessID, //string
+				ProcessName: processName,                        //string
+			}
+		}
+		processExecutorStateItem.State = processExecutorStates[i].State
+		if len(processExecutorStates[i].State) > 0 {
+			processExecutorStateItem.Execute = processExecutorStates[i].State
+			processExecutorStateItem.State = "start_process"
+		}
+		processExecutorStateItem.ProcessStates = append(processExecutorStateItem.ProcessStates, processExecutorStates[i].Data)
+		processStateByProcessID[processExecutorStates[i].ProcessID] = processExecutorStateItem
+	}
+	for i := range processStateByProcessID {
+		processExecutorStateItems = append(processExecutorStateItems, processStateByProcessID[i])
+	}
+
+	/*
+		if s.loadProcessStatesCallback == nil {
+			return nil, fmt.Errorf("load process states callback not found")
+		}
+		dataRaw, err := s.loadProcessStatesCallback(processExecutor, processID)
+		if err != nil {
+			return nil, err
+		}
+	*/
+	return processExecutorStateItems, nil
 }
 
-func (s *Store) StoreStartProcessState(processExecutor, processID string, processExecutorState string) error {
-	if s.storeStartProcessStateCallback != nil {
-		return s.storeStartProcessStateCallback(processExecutor, processID, processExecutorState)
+/*
+	func (s *Store) LoadNotFinishedProcessStates(processExecutor string) ([]*ProcessStateItem, error) {
+		if s.loadProcessStatesCallback == nil {
+			return nil, fmt.Errorf("load process states callback not found")
+		}
+		dataRaw, err := s.loadNotFinishedProcessStatesCallback(processExecutor)
+		if err != nil {
+			return nil, err
+		}
+
+		return dataRaw, nil
 	}
-	return fmt.Errorf("store start process state callback not found")
+*/
+func (s *Store) StoreStartProcessState(ctx context.Context, processExecutor, processID string, processExecutorState string) error {
+	pes := &entity.StoreProcess{
+		UUID:         uuid.NewString(),
+		ExecutorID:   processExecutor,
+		ProcessID:    processID,
+		ProcessState: processExecutorState,
+		Data:         "{}",
+		State:        "start",
+		//processExecutor: processExecutor,
+	}
+	return s.processRepository.Create(ctx, pes)
 }
 
-func (s *Store) StoreChangeProcessState(processExecutor, processID string, processState string, data string) error {
-	if s.storeChangeProcessStateCallback != nil {
-		return s.storeChangeProcessStateCallback(processExecutor, processID, processState, data)
+func (s *Store) StoreChangeProcessState(ctx context.Context, processExecutor, processID string, processState string, data string) error {
+	pes := &entity.StoreProcess{
+		UUID:         uuid.NewString(),
+		ExecutorID:   processExecutor,
+		ProcessID:    processID,
+		ProcessState: "data",
+		Data:         data,
+		State:        "start",
+		//processExecutor: processExecutor,
 	}
-	return fmt.Errorf("store change process state callback not found")
+	return s.processRepository.Create(ctx, pes)
 }
 
-func (s *Store) StoreFinishProcessState(processExecutor, processID string, processExecutorState string) error {
-	if s.storeFinishProcessStateCallback != nil {
-		return s.storeFinishProcessStateCallback(processExecutor, processID, processExecutorState)
+func (s *Store) StoreFinishProcessState(ctx context.Context, processExecutor, processID string, processExecutorState string) error {
+	pes := &entity.StoreProcess{
+		UUID:         uuid.NewString(),
+		ExecutorID:   processExecutor,
+		ProcessID:    processID,
+		ProcessState: processExecutorState,
+		Data:         "{}",
+		State:        "finish",
+		//processExecutor: processExecutor,
 	}
-	return fmt.Errorf("store finish process state callback not found")
+	if len(processExecutorState) == 0 {
+		err := s.processRepository.DeleteByProcessID(ctx, processID)
+		if err != nil {
+			return err
+		}
+	}
+	return s.processRepository.Create(ctx, pes)
 }
