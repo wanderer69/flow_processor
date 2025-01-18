@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="./vars.css">
+  <link rel="stylesheet" href="./style.css"> 
+  <style>
+   a,
+   button,
+   input,
+   select,
+   h1,
+   h2,
+   h3,
+   h4,
+   h5,
+   * {
+       box-sizing: border-box;
+       margin: 0;
+       padding: 0;
+       border: none;
+       text-decoration: none;
+       background: none;
+   
+       -webkit-font-smoothing: antialiased;
+   }
+   
+   menu, ol, ul {
+       list-style-type: none;
+       margin: 0;
+       padding: 0;
+   }
+   </style>
+  <title>Document</title>
+</head>
+<body>
+  <div id="DocConstructor" class="DocConstructor" style="display:none">
+    {
+      "doc_constructors": [
+        {
+          "object": {
+            "object_id": "table_1",
+            "object_type": "table",
+            "object_extender": {
+              "selector_items": [
+                {
+                  "id": "Item1",
+                  "data": "data item1"
+                },
+                {
+                  "id": "Item2",
+                  "data": "data item2"
+                },
+                {
+                  "id": "Item3",
+                  "data": "data item3"
+                }
+              ],
+              "change_callback": "TableChangeCallBack",
+              "click_callback": "TableClickCallBack"
+            }
+          }
+        },
+        {
+          "object": {
+            "object_id": "table_2",
+            "object_type": "table",
+            "object_extender": {
+              "selector_items": [
+                {
+                  "id": "Item1",
+                  "data": "data item1"
+                },
+                {
+                  "id": "Item2",
+                  "data": "data item2"
+                },
+                {
+                  "id": "Item3",
+                  "data": "data item3"
+                }
+              ],
+              "change_callback": "TableChangeCallBack",
+              "click_callback": "TableClickCallBack"
+            }
+          }
+        }
+      ]
+    }
+</div>  
+  <div class="desctop-process-control">
+    <div class="group-top-bar">
+      <div class="rectangle-18"></div>
+      <div class="process-executor">Process executor</div>
+    </div>
+    <div class="group-process-information">
+      <div class="rectangle-182"></div>
+      <div class="rectangle-183"></div>
+      <div class="process-information">Process information</div>
+      <div class="group-table-process-information">
+        <div class="table-process-info">
+          <table id="table_1" class="hoverTable">
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="group-processes-list">
+      <div class="rectangle-184"></div>
+      <div class="rectangle-185"></div>
+      <div class="processes-list">Processes list</div>
+      <div class="group-table-processes-list">
+        <div class="table-processes-list">
+          <table id="table_2" class="hoverTable">
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="wasm_exec.js"></script>
+  <script>
+    const go = new Go();
+    WebAssembly.instantiateStreaming(fetch("json_3.wasm"), go.importObject).then((result) => {
+        go.run(result.instance);
+    });
+  </script>
+
+</body>
+</html>

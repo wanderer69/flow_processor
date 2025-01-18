@@ -14,21 +14,6 @@ import (
 	"github.com/wanderer69/flow_processor/pkg/timer"
 )
 
-type ChannelMessage struct {
-	CurrentElement *entity.Element
-
-	Variables         []*entity.Variable
-	Messages          []*entity.Message
-	ActivationTime    time.Time
-	ProcessID         string
-	NextElementsNames []string
-}
-
-type ProcessElementData struct {
-	NextElements []*entity.Element
-	WaitFlowCnt  int
-}
-
 type Process struct {
 	UUID          string
 	process       *entity.Process
@@ -41,7 +26,7 @@ type Process struct {
 	InternalStopped chan bool
 
 	mu                                          *sync.Mutex
-	ProcessElementDataByProcessIDAndElementUUID map[string]*ProcessElementData
+	ProcessElementDataByProcessIDAndElementUUID map[string]*entity.ProcessElementData
 	ProcessEndCnt                               int
 }
 
@@ -52,7 +37,7 @@ func NewProcess(context *entity.Context) *Process {
 		InternalStopped: make(chan bool),
 		mu:              &sync.Mutex{},
 		Context:         context,
-		ProcessElementDataByProcessIDAndElementUUID: make(map[string]*ProcessElementData),
+		ProcessElementDataByProcessIDAndElementUUID: make(map[string]*entity.ProcessElementData),
 		elementByUUID:        make(map[string]*entity.Element),
 		elementByMessageName: make(map[string][]*entity.Element),
 	}
@@ -63,14 +48,14 @@ func NewProcess(context *entity.Context) *Process {
 	return process
 }
 
-func (p *Process) SetData(elementUUID string, ped *ProcessElementData) {
+func (p *Process) SetData(elementUUID string, ped *entity.ProcessElementData) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	//fmt.Printf("set elementUUID %v p.UUID %v\r\n", elementUUID, p.UUID)
 	p.ProcessElementDataByProcessIDAndElementUUID[elementUUID+p.UUID] = ped
 }
 
-func (p *Process) GetData(elementUUID string) (*ProcessElementData, bool) {
+func (p *Process) GetData(elementUUID string) (*entity.ProcessElementData, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -91,16 +76,16 @@ type ProcessExecutor struct {
 	processes             []*Process
 	executedProcessByUUID map[string]*Process
 
-	internalActivation chan *ChannelMessage
-	externalActivation chan *ChannelMessage
+	internalActivation chan *entity.ChannelMessage
+	externalActivation chan *entity.ChannelMessage
 
-	activateTopic   chan *ChannelMessage
-	activateTimer   chan *ChannelMessage
-	activateMailBox chan *ChannelMessage
+	activateTopic   chan *entity.ChannelMessage
+	activateTimer   chan *entity.ChannelMessage
+	activateMailBox chan *entity.ChannelMessage
 
-	fromTopic   chan *ChannelMessage
-	fromTimer   chan *ChannelMessage
-	fromMailBox chan *ChannelMessage
+	fromTopic   chan *entity.ChannelMessage
+	fromTimer   chan *entity.ChannelMessage
+	fromMailBox chan *entity.ChannelMessage
 
 	Stopped         chan *FinishedProcessData
 	InternalStopped chan *FinishedProcessData
@@ -108,7 +93,7 @@ type ProcessExecutor struct {
 	externalTopic           ExternalTopic
 	timer                   Timer
 	externalActivationAgent ExternalActivation
-	loaderClient            LoaderClient
+	storeClient             StoreClient
 
 	fnDebug     func(ctx context.Context, msg string) error
 	broker      func()
@@ -130,7 +115,7 @@ const (
 
 type InternalEvent struct {
 	eventType string
-	msg       *ChannelMessage
+	msg       *entity.ChannelMessage
 	next      *InternalEvent
 }
 
@@ -138,30 +123,30 @@ func NewProcessExecutor(
 	externalTopic ExternalTopic,
 	timer Timer,
 	externalActivationAgent ExternalActivation,
-	loaderClient LoaderClient,
+	storeClient StoreClient,
 	stop chan struct{},
 ) *ProcessExecutor {
 	ctx := context.Background()
 	pe := &ProcessExecutor{
 		UUID:               uuid.NewString(),
-		internalActivation: make(chan *ChannelMessage, 10),
-		externalActivation: make(chan *ChannelMessage),
+		internalActivation: make(chan *entity.ChannelMessage, 10),
+		externalActivation: make(chan *entity.ChannelMessage),
 		Stopped:            make(chan *FinishedProcessData),
 		InternalStopped:    make(chan *FinishedProcessData),
-		activateTopic:      make(chan *ChannelMessage),
-		activateTimer:      make(chan *ChannelMessage),
-		activateMailBox:    make(chan *ChannelMessage),
+		activateTopic:      make(chan *entity.ChannelMessage),
+		activateTimer:      make(chan *entity.ChannelMessage),
+		activateMailBox:    make(chan *entity.ChannelMessage),
 
-		fromTopic:   make(chan *ChannelMessage),
-		fromTimer:   make(chan *ChannelMessage),
-		fromMailBox: make(chan *ChannelMessage),
+		fromTopic:   make(chan *entity.ChannelMessage),
+		fromTimer:   make(chan *entity.ChannelMessage),
+		fromMailBox: make(chan *entity.ChannelMessage),
 
 		executedProcessByUUID: make(map[string]*Process),
 
 		externalTopic:           externalTopic,
 		timer:                   timer,
 		externalActivationAgent: externalActivationAgent,
-		loaderClient:            loaderClient,
+		storeClient:             storeClient,
 		processByProcessName:    make(map[string]*entity.Process),
 		mu:                      &sync.Mutex{},
 	}
@@ -393,7 +378,7 @@ func (pe *ProcessExecutor) ProcessFinished(ctx context.Context, processID string
 
 	delete(pe.executedProcessByUUID, processID)
 
-	pe.loaderClient.StoreFinishProcessState(pe.UUID, processID, "")
+	pe.storeClient.StoreFinishProcessState(ctx, pe.UUID, processID, "")
 	pe.Stopped <- &FinishedProcessData{
 		ProcessID: processID,
 		Error:     errorMsg,
@@ -410,7 +395,7 @@ func (pe *ProcessExecutor) ProcessExecutorFinished(ctx context.Context, errorMsg
 
 /*
 	func (pe *ProcessExecutor) Load(ctx context.Context) error {
-		lst, err := pe.loaderClient.LoadStoredProcessesList()
+		lst, err := pe.storeClient.LoadStoredProcessesList()
 		if err != nil {
 			if !strings.Contains(err.Error(), "not found") {
 				return err
@@ -418,13 +403,13 @@ func (pe *ProcessExecutor) ProcessExecutorFinished(ctx context.Context, errorMsg
 		}
 
 		for i := range lst {
-			processName, processID, elementUUID, state, processContext, err := pe.loaderClient.LoadProcessState(lst[i].ProcessName, lst[i].ProcessID)
+			processName, processID, elementUUID, state, processContext, err := pe.storeClient.LoadProcessState(lst[i].ProcessName, lst[i].ProcessID)
 			if err != nil {
 				// skip error
 				continue
 			}
 			// загружаем процесс
-			processRaw, err := pe.loaderClient.LoadProcessDiagramm(processName)
+			processRaw, err := pe.storeClient.LoadProcessDiagramm(processName)
 			if err != nil {
 				// skip error
 				continue
@@ -741,7 +726,7 @@ func (pe *ProcessExecutor) AddProcess(ctx context.Context, process *entity.Proce
 			if !ok {
 				return fmt.Errorf("element by topic %v not found", topicName)
 			}
-			pe.fromTopic <- &ChannelMessage{
+			pe.fromTopic <- &entity.ChannelMessage{
 				CurrentElement: element,
 				Messages:       msgs,
 				Variables:      vars,
@@ -763,7 +748,7 @@ func (pe *ProcessExecutor) AddProcess(ctx context.Context, process *entity.Proce
 			if !ok {
 				return fmt.Errorf("element by topic %v not found", timerID)
 			}
-			pe.fromTimer <- &ChannelMessage{
+			pe.fromTimer <- &entity.ChannelMessage{
 				CurrentElement: element,
 				Messages:       msgs,
 				Variables:      vars,
@@ -796,7 +781,7 @@ func (pe *ProcessExecutor) AddProcess(ctx context.Context, process *entity.Proce
 			if !ok {
 				return fmt.Errorf("element by element name %v not found", elementName)
 			}
-			pe.fromTopic <- &ChannelMessage{
+			pe.fromTopic <- &entity.ChannelMessage{
 				CurrentElement: element,
 				Messages:       msgs,
 				Variables:      vars,
@@ -813,16 +798,6 @@ func (pe *ProcessExecutor) AddProcess(ctx context.Context, process *entity.Proce
 	pe.processByProcessName[process.Name] = process
 
 	return nil
-}
-
-type StoreProcessContext struct {
-	ProcessID          string
-	Ctx                *entity.Context
-	Msg                *ChannelMessage
-	ProcessElementData *ProcessElementData
-	IsFinish           bool
-	IsWait             bool
-	ProcessName        string
 }
 
 func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string, vars []*entity.Variable) (*Process, error) {
@@ -878,7 +853,7 @@ func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string,
 	pe.processes = append(pe.processes, process)
 	pe.executedProcessByUUID[process.UUID] = process
 
-	spc := &StoreProcessContext{
+	spc := &entity.StoreProcessContext{
 		ProcessID:   process.UUID,
 		Ctx:         process.Context,
 		ProcessName: processName,
@@ -887,14 +862,14 @@ func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string,
 	if err != nil {
 		return nil, err
 	}
-	err = pe.loaderClient.StoreStartProcessState(pe.UUID, process.UUID, string(dataRaw))
+	err = pe.storeClient.StoreStartProcessState(ctx, pe.UUID, process.UUID, string(dataRaw))
 	if err != nil {
 		if !strings.Contains(err.Error(), "not found") {
 			return nil, err
 		}
 	}
 	for i := range currentElements {
-		pe.internalActivation <- &ChannelMessage{
+		pe.internalActivation <- &entity.ChannelMessage{
 			ProcessID:      process.UUID,
 			CurrentElement: currentElements[i],
 			Variables:      vars,
@@ -904,18 +879,10 @@ func (pe *ProcessExecutor) StartProcess(ctx context.Context, processName string,
 	return process, nil
 }
 
-type ProcessExecutorStateItem struct {
-	ProcessID     string
-	ProcessName   string
-	State         string
-	Execute       string
-	ProcessStates []string
-}
-
 func (pe *ProcessExecutor) ContinueProcessExecutor(
 	ctx context.Context,
 	processExecutor string,
-	processExecutorStateItem []*ProcessExecutorStateItem,
+	//processExecutorStateItems []*entity.ProcessExecutorStateItem,
 ) error {
 	/*
 		var processID string
@@ -923,33 +890,38 @@ func (pe *ProcessExecutor) ContinueProcessExecutor(
 		var state string
 		var processContext *entity.Context
 	*/
-	for i := range processExecutorStateItem {
-		if len(processExecutorStateItem[i].ProcessName) == 0 {
+	processExecutorStateItems, err := pe.storeClient.LoadProcessStates(ctx, processExecutor)
+	if err != nil {
+		return err
+	}
+
+	for i := range processExecutorStateItems {
+		if len(processExecutorStateItems[i].ProcessName) == 0 {
 			continue
 		}
-		currentProcess, ok := pe.processByProcessName[processExecutorStateItem[i].ProcessName]
+		currentProcess, ok := pe.processByProcessName[processExecutorStateItems[i].ProcessName]
 		if !ok {
-			process, err := pe.loaderClient.LoadProcessDiagramm(processExecutorStateItem[i].ProcessName)
+			process, err := pe.storeClient.LoadProcessDiagramm(ctx, processExecutorStateItems[i].ProcessName)
 			if err != nil {
-				return fmt.Errorf("process %v not found", processExecutorStateItem[i].ProcessName)
+				return fmt.Errorf("process %v not found", processExecutorStateItems[i].ProcessName)
 			}
-			pe.processByProcessName[processExecutorStateItem[i].ProcessName] = process
+			pe.processByProcessName[processExecutorStateItems[i].ProcessName] = process
 			currentProcess = process
 		}
 		// ищем последний контекст
 		var processContext *entity.Context
-		var lastSPC *StoreProcessContext
-		var msg *ChannelMessage
+		var lastSPC *entity.StoreProcessContext
+		var msg *entity.ChannelMessage
 		state := ""
-		for j := range processExecutorStateItem[i].ProcessStates {
-			if len(processExecutorStateItem[i].ProcessStates[j]) == 0 {
+		for j := range processExecutorStateItems[i].ProcessStates {
+			if len(processExecutorStateItems[i].ProcessStates[j]) == 0 {
 				continue
 			}
-			var spc StoreProcessContext
-			err := json.Unmarshal([]byte(processExecutorStateItem[i].ProcessStates[j]), &spc)
+			var spc entity.StoreProcessContext
+			err := json.Unmarshal([]byte(processExecutorStateItems[i].ProcessStates[j]), &spc)
 			if err != nil {
-				return fmt.Errorf("failed unmarshal state %v process %v %v: %w", processExecutorStateItem[i].ProcessStates[j],
-					processExecutorStateItem[i].ProcessName, processExecutorStateItem[i].ProcessID, err)
+				return fmt.Errorf("failed unmarshal state %v process %v %v: %w", processExecutorStateItems[i].ProcessStates[j],
+					processExecutorStateItems[i].ProcessName, processExecutorStateItems[i].ProcessID, err)
 			}
 			if spc.Ctx != nil {
 				processContext = spc.Ctx
@@ -976,12 +948,12 @@ func (pe *ProcessExecutor) ContinueProcessExecutor(
 		pe.processes = append(pe.processes, process)
 		pe.executedProcessByUUID[process.UUID] = process
 
-		state = processExecutorStateItem[i].Execute
+		state = processExecutorStateItems[i].Execute
 
 		err := pe.ProcessLoad(ctx, state, msg, lastSPC)
 		if err != nil {
-			return fmt.Errorf("failed load process %v %v: %w", processExecutorStateItem[i].ProcessName,
-				processExecutorStateItem[i].ProcessID, err)
+			return fmt.Errorf("failed load process %v %v: %w", processExecutorStateItems[i].ProcessName,
+				processExecutorStateItems[i].ProcessID, err)
 		}
 	}
 
@@ -1006,7 +978,7 @@ func (pe *ProcessExecutor) ContinueProcessExecutor(
 
 	/*
 		for i := range currentElements {
-			pe.internalActivation <- &ChannelMessage{
+			pe.internalActivation <- &entity.ChannelMessage{
 				processID:      process.UUID,
 				CurrentElement: currentElements[i],
 				Variables:      vars,
@@ -1017,6 +989,7 @@ func (pe *ProcessExecutor) ContinueProcessExecutor(
 	return nil
 }
 
+/*
 type ProcessContext struct {
 	ProcessID string
 	ElementID string
@@ -1062,8 +1035,9 @@ func (pe *ProcessExecutor) StoreProcessExecutorContext(
 	if err != nil {
 		return err
 	}
-	return pe.loaderClient.StoreProcessExecutorState(pe.UUID, string(dataRaw))
+	return pe.storeClient.StoreProcessExecutorState(pe.UUID, string(dataRaw))
 }
+*/
 
 func (p *Process) GetElementByUUID(uuid string) *entity.Element {
 	element, ok := p.elementByUUID[uuid]
@@ -1101,7 +1075,7 @@ func (pe *ProcessExecutor) GetProcess(uuid string) *Process {
 	return process
 }
 
-func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error) {
+func (pe *ProcessExecutor) StartExecuteElement(msg *entity.ChannelMessage) (bool, error) {
 	isExternal := false
 	switch msg.CurrentElement.ElementType {
 	case entity.ElementTypeStartEvent:
@@ -1109,7 +1083,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1125,7 +1099,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1136,7 +1110,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1152,7 +1126,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1172,7 +1146,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1183,7 +1157,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1209,7 +1183,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 			nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 			ped, ok := process.GetData(msg.CurrentElement.UUID)
 			if !ok {
-				ped = &ProcessElementData{
+				ped = &entity.ProcessElementData{
 					NextElements: nextElements,
 				}
 			}
@@ -1245,7 +1219,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 			nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 			_, ok := process.GetData(msg.CurrentElement.UUID)
 			if !ok {
-				ped := &ProcessElementData{}
+				ped := &entity.ProcessElementData{}
 				if isCase2 {
 					ped.WaitFlowCnt = len(msg.CurrentElement.InputsElementID)
 				} else {
@@ -1259,7 +1233,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1275,7 +1249,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1301,7 +1275,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1311,7 +1285,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		if msg.CurrentElement.IsSendMail {
 			// отправка
 			// запускаем инициализацию отправки сообщения
-			pe.activateMailBox <- &ChannelMessage{
+			pe.activateMailBox <- &entity.ChannelMessage{
 				CurrentElement: msg.CurrentElement,
 				ProcessID:      msg.ProcessID,
 			}
@@ -1323,7 +1297,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1334,7 +1308,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1359,7 +1333,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1371,7 +1345,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *ChannelMessage) (bool, error
 	return isExternal, nil
 }
 
-func (pe *ProcessExecutor) FinishExecuteElement(msg *ChannelMessage) ([]*entity.Element, bool, error) {
+func (pe *ProcessExecutor) FinishExecuteElement(msg *entity.ChannelMessage) ([]*entity.Element, bool, error) {
 	currentElement := []*entity.Element{}
 	process := pe.GetProcess(msg.ProcessID)
 	// логика обработки результата элемента
@@ -1410,7 +1384,7 @@ func (pe *ProcessExecutor) FinishExecuteElement(msg *ChannelMessage) ([]*entity.
 		if len(executedElements) == 0 {
 			ped, ok := process.GetData(msg.CurrentElement.UUID)
 			if !ok {
-				ped = &ProcessElementData{
+				ped = &entity.ProcessElementData{
 					NextElements: []*entity.Element{defaultElement},
 				}
 			}
@@ -1418,7 +1392,7 @@ func (pe *ProcessExecutor) FinishExecuteElement(msg *ChannelMessage) ([]*entity.
 		} else {
 			ped, ok := process.GetData(msg.CurrentElement.UUID)
 			if !ok {
-				ped = &ProcessElementData{
+				ped = &entity.ProcessElementData{
 					NextElements: executedElements,
 				}
 			}
@@ -1461,7 +1435,7 @@ func (pe *ProcessExecutor) FinishExecuteElement(msg *ChannelMessage) ([]*entity.
 				nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 				ped, ok := process.GetData(msg.CurrentElement.UUID)
 				if !ok {
-					ped = &ProcessElementData{
+					ped = &entity.ProcessElementData{
 						NextElements: nextElements,
 					}
 				}
@@ -1470,7 +1444,7 @@ func (pe *ProcessExecutor) FinishExecuteElement(msg *ChannelMessage) ([]*entity.
 		} else {
 			ped, ok := process.GetData(msg.CurrentElement.UUID)
 			if !ok {
-				ped = &ProcessElementData{
+				ped = &entity.ProcessElementData{
 					WaitFlowCnt: len(msg.CurrentElement.InputsElementID),
 				}
 				process.SetData(msg.CurrentElement.UUID, ped)
@@ -1492,7 +1466,7 @@ func (pe *ProcessExecutor) FinishExecuteElement(msg *ChannelMessage) ([]*entity.
 		nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
 		ped, ok := process.GetData(msg.CurrentElement.UUID)
 		if !ok {
-			ped = &ProcessElementData{
+			ped = &entity.ProcessElementData{
 				NextElements: nextElements,
 			}
 		}
@@ -1513,7 +1487,7 @@ const (
 	CPStateFinishPost string = "finish_post"
 )
 
-func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMessage, isFinish bool) error {
+func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *entity.ChannelMessage, isFinish bool) error {
 	isWait := false
 	var err error
 	var dataRaw []byte
@@ -1522,7 +1496,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 	}
 	process := pe.GetProcess(msg.ProcessID)
 	if !isFinish {
-		spc := &StoreProcessContext{
+		spc := &entity.StoreProcessContext{
 			ProcessID: msg.ProcessID,
 			Ctx:       process.Context,
 			Msg:       msg,
@@ -1534,7 +1508,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 			return err
 		}
 
-		err = pe.loaderClient.StoreChangeProcessState(pe.UUID, msg.ProcessID, CPStateStart, string(dataRaw))
+		err = pe.storeClient.StoreChangeProcessState(ctx, pe.UUID, msg.ProcessID, CPStateStart, string(dataRaw))
 		if err != nil {
 			if !strings.Contains(err.Error(), "not found") {
 				return err
@@ -1545,7 +1519,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 			return err
 		}
 		if isWait {
-			spc := &StoreProcessContext{
+			spc := &entity.StoreProcessContext{
 				ProcessID: msg.ProcessID,
 				Ctx:       process.Context,
 				//Msg: msg,
@@ -1556,7 +1530,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 				return err
 			}
 
-			err = pe.loaderClient.StoreChangeProcessState(pe.UUID, msg.ProcessID, CPStateIsWait, string(dataRaw))
+			err = pe.storeClient.StoreChangeProcessState(ctx, pe.UUID, msg.ProcessID, CPStateIsWait, string(dataRaw))
 			if err != nil {
 				if !strings.Contains(err.Error(), "not found") {
 					return err
@@ -1564,14 +1538,14 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 			}
 			if msg.CurrentElement.IsExternalByTopic {
 				// запускаем отдачу в топик
-				pe.activateTopic <- &ChannelMessage{
+				pe.activateTopic <- &entity.ChannelMessage{
 					CurrentElement: msg.CurrentElement,
 					ProcessID:      msg.ProcessID,
 				}
 			}
 			if msg.CurrentElement.IsTimer {
 				// запускаем инициализацию таймера
-				pe.activateTimer <- &ChannelMessage{
+				pe.activateTimer <- &entity.ChannelMessage{
 					CurrentElement: msg.CurrentElement,
 					ProcessID:      msg.ProcessID,
 				}
@@ -1579,7 +1553,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 		}
 	}
 	if !isWait {
-		spc := &StoreProcessContext{
+		spc := &entity.StoreProcessContext{
 			ProcessID: msg.ProcessID,
 			Ctx:       process.Context,
 			Msg:       msg,
@@ -1590,7 +1564,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 			return err
 		}
 
-		err = pe.loaderClient.StoreChangeProcessState(pe.UUID, msg.ProcessID, CPStateFinish, string(dataRaw))
+		err = pe.storeClient.StoreChangeProcessState(ctx, pe.UUID, msg.ProcessID, CPStateFinish, string(dataRaw))
 		if err != nil {
 			if !strings.Contains(err.Error(), "not found") {
 				return err
@@ -1609,7 +1583,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 		}
 
 		if msg.CurrentElement != nil {
-			spc := &StoreProcessContext{
+			spc := &entity.StoreProcessContext{
 				ProcessID: msg.ProcessID,
 				Ctx:       process.Context,
 				//Msg: msg,
@@ -1622,7 +1596,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 			if isPresent {
 				spc.ProcessElementData = ped
 			}
-			err = pe.loaderClient.StoreChangeProcessState(pe.UUID, msg.ProcessID, CPStateFinishPost, string(dataRaw))
+			err = pe.storeClient.StoreChangeProcessState(ctx, pe.UUID, msg.ProcessID, CPStateFinishPost, string(dataRaw))
 			if err != nil {
 				if !strings.Contains(err.Error(), "not found") {
 					return err
@@ -1634,7 +1608,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 			if len(msg.NextElementsNames) > 0 {
 				for i := range msg.NextElementsNames {
 					element := process.GetElementByUUID(msg.NextElementsNames[i])
-					pe.internalActivation <- &ChannelMessage{
+					pe.internalActivation <- &entity.ChannelMessage{
 						CurrentElement: element,
 						ProcessID:      msg.NextElementsNames[i],
 					}
@@ -1645,7 +1619,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 			if isPresent {
 				for i := range ped.NextElements {
 					//fmt.Printf("----> %v %v\r\n", ped.nextElements[i].ElementType, ped.nextElements[i].CamundaModelerName)
-					pe.internalActivation <- &ChannelMessage{
+					pe.internalActivation <- &entity.ChannelMessage{
 						CurrentElement: ped.NextElements[i],
 						ProcessID:      process.UUID,
 					}
@@ -1656,7 +1630,7 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *ChannelMess
 	return nil
 }
 
-func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *ChannelMessage, spc *StoreProcessContext) error {
+func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *entity.ChannelMessage, spc *entity.StoreProcessContext) error {
 	isWait := false
 	var err error
 	var dataRaw []byte
@@ -1670,7 +1644,7 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *C
 	switch state {
 	case CPStateStart:
 		if isWait {
-			spc := &StoreProcessContext{
+			spc := &entity.StoreProcessContext{
 				ProcessID: msg.ProcessID,
 				Ctx:       process.Context,
 				//Msg: msg,
@@ -1680,7 +1654,7 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *C
 				return err
 			}
 
-			err = pe.loaderClient.StoreChangeProcessState(pe.UUID, msg.ProcessID, CPStateIsWait, string(dataRaw))
+			err = pe.storeClient.StoreChangeProcessState(ctx, pe.UUID, msg.ProcessID, CPStateIsWait, string(dataRaw))
 			if err != nil {
 				if !strings.Contains(err.Error(), "not found") {
 					return err
@@ -1688,14 +1662,14 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *C
 			}
 			if msg.CurrentElement.IsExternalByTopic {
 				// запускаем отдачу в топик
-				pe.activateTopic <- &ChannelMessage{
+				pe.activateTopic <- &entity.ChannelMessage{
 					CurrentElement: msg.CurrentElement,
 					ProcessID:      msg.ProcessID,
 				}
 			}
 			if msg.CurrentElement.IsTimer {
 				// запускаем инициализацию таймера
-				pe.activateTimer <- &ChannelMessage{
+				pe.activateTimer <- &entity.ChannelMessage{
 					CurrentElement: msg.CurrentElement,
 					ProcessID:      msg.ProcessID,
 				}
@@ -1717,7 +1691,7 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *C
 		}
 
 		if msg.CurrentElement != nil {
-			spc := &StoreProcessContext{
+			spc := &entity.StoreProcessContext{
 				ProcessID: msg.ProcessID,
 				Ctx:       process.Context,
 				//Msg: msg,
@@ -1730,7 +1704,7 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *C
 			if isPresent {
 				spc.ProcessElementData = ped
 			}
-			err = pe.loaderClient.StoreChangeProcessState(pe.UUID, msg.ProcessID, CPStateFinishPost, string(dataRaw))
+			err = pe.storeClient.StoreChangeProcessState(ctx, pe.UUID, msg.ProcessID, CPStateFinishPost, string(dataRaw))
 			if err != nil {
 				if !strings.Contains(err.Error(), "not found") {
 					return err
@@ -1742,7 +1716,7 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *C
 			if len(msg.NextElementsNames) > 0 {
 				for i := range msg.NextElementsNames {
 					element := process.GetElementByUUID(msg.NextElementsNames[i])
-					pe.internalActivation <- &ChannelMessage{
+					pe.internalActivation <- &entity.ChannelMessage{
 						CurrentElement: element,
 						ProcessID:      msg.NextElementsNames[i],
 					}
@@ -1753,7 +1727,7 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *C
 			if isPresent {
 				for i := range ped.NextElements {
 					//fmt.Printf("----> %v %v\r\n", ped.nextElements[i].ElementType, ped.nextElements[i].CamundaModelerName)
-					pe.internalActivation <- &ChannelMessage{
+					pe.internalActivation <- &entity.ChannelMessage{
 						CurrentElement: ped.NextElements[i],
 						ProcessID:      process.UUID,
 					}
@@ -1766,7 +1740,7 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *C
 		if len(msg.NextElementsNames) > 0 {
 			for i := range msg.NextElementsNames {
 				element := process.GetElementByUUID(msg.NextElementsNames[i])
-				pe.internalActivation <- &ChannelMessage{
+				pe.internalActivation <- &entity.ChannelMessage{
 					CurrentElement: element,
 					ProcessID:      msg.NextElementsNames[i],
 				}
@@ -1777,7 +1751,7 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *C
 		if isPresent {
 			for i := range ped.NextElements {
 				//fmt.Printf("----> %v %v\r\n", ped.nextElements[i].ElementType, ped.nextElements[i].CamundaModelerName)
-				pe.internalActivation <- &ChannelMessage{
+				pe.internalActivation <- &entity.ChannelMessage{
 					CurrentElement: ped.NextElements[i],
 					ProcessID:      process.UUID,
 				}
@@ -1787,7 +1761,7 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *C
 	return nil
 }
 
-func (pe *ProcessExecutor) SendToExternalTopic(msg *ChannelMessage) error {
+func (pe *ProcessExecutor) SendToExternalTopic(msg *entity.ChannelMessage) error {
 	ctx := context.Background()
 	process := pe.GetProcess(msg.ProcessID)
 
@@ -1798,7 +1772,7 @@ func (pe *ProcessExecutor) SendToExternalTopic(msg *ChannelMessage) error {
 	return pe.externalTopic.Send(ctx, process.process.Name, process.UUID, msg.CurrentElement.TopicName, msg.Messages, msg.Variables)
 }
 
-func (pe *ProcessExecutor) ActivateTimer(msg *ChannelMessage) error {
+func (pe *ProcessExecutor) ActivateTimer(msg *entity.ChannelMessage) error {
 	ctx := context.Background()
 	process := pe.GetProcess(msg.ProcessID)
 
@@ -1820,7 +1794,7 @@ func (pe *ProcessExecutor) ActivateTimer(msg *ChannelMessage) error {
 	return nil
 }
 
-func (pe *ProcessExecutor) SendToMailBox(msg *ChannelMessage) error {
+func (pe *ProcessExecutor) SendToMailBox(msg *entity.ChannelMessage) error {
 	ctx := context.Background()
 	process := pe.GetProcess(msg.ProcessID)
 
@@ -1828,7 +1802,7 @@ func (pe *ProcessExecutor) SendToMailBox(msg *ChannelMessage) error {
 		pe.fnDebug(ctx, fmt.Sprintf("process %v send email %v ", process.UUID, msg.CurrentElement.OutputMessages))
 	}
 
-	eventsByElement := make(map[string]*ChannelMessage)
+	eventsByElement := make(map[string]*entity.ChannelMessage)
 	// проходим по подписчикам и кидаем им в цикле сообщения
 	for i := range msg.CurrentElement.OutputMessages {
 		elements, ok := process.elementByMessageName[msg.CurrentElement.OutputMessages[i].Name]
@@ -1841,7 +1815,7 @@ func (pe *ProcessExecutor) SendToMailBox(msg *ChannelMessage) error {
 					}
 					v, ok := eventsByElement[elements[j].UUID]
 					if !ok {
-						v = &ChannelMessage{
+						v = &entity.ChannelMessage{
 							CurrentElement: elements[j],
 							Variables:      msg.Variables,
 							ProcessID:      msg.ProcessID,
@@ -1859,7 +1833,7 @@ func (pe *ProcessExecutor) SendToMailBox(msg *ChannelMessage) error {
 	return nil
 }
 
-func (pe *ProcessExecutor) RecieveFromTopic(msg *ChannelMessage) error {
+func (pe *ProcessExecutor) RecieveFromTopic(msg *entity.ChannelMessage) error {
 	ctx := context.Background()
 	process := pe.GetProcess(msg.ProcessID)
 	currentElement := msg.CurrentElement
@@ -1875,14 +1849,14 @@ func (pe *ProcessExecutor) RecieveFromTopic(msg *ChannelMessage) error {
 		process.Context.VariablesByName[msg.Variables[i].Name] = msg.Variables[i]
 	}
 
-	pe.externalActivation <- &ChannelMessage{
+	pe.externalActivation <- &entity.ChannelMessage{
 		CurrentElement: currentElement,
 		ProcessID:      msg.ProcessID,
 	}
 	return nil
 }
 
-func (pe *ProcessExecutor) RecieveFromTimer(msg *ChannelMessage) error {
+func (pe *ProcessExecutor) RecieveFromTimer(msg *entity.ChannelMessage) error {
 	//
 	ctx := context.Background()
 	process := pe.GetProcess(msg.ProcessID)
@@ -1899,14 +1873,14 @@ func (pe *ProcessExecutor) RecieveFromTimer(msg *ChannelMessage) error {
 		process.Context.VariablesByName[msg.Variables[i].Name] = msg.Variables[i]
 	}
 
-	pe.externalActivation <- &ChannelMessage{
+	pe.externalActivation <- &entity.ChannelMessage{
 		CurrentElement: currentElement,
 		ProcessID:      msg.ProcessID,
 	}
 	return nil
 }
 
-func (pe *ProcessExecutor) RecieveFromMail(msg *ChannelMessage) error {
+func (pe *ProcessExecutor) RecieveFromMail(msg *entity.ChannelMessage) error {
 	//
 	ctx := context.Background()
 	process := pe.GetProcess(msg.ProcessID)
@@ -1926,7 +1900,7 @@ func (pe *ProcessExecutor) RecieveFromMail(msg *ChannelMessage) error {
 		process.Context.VariablesByName[msg.Variables[i].Name] = msg.Variables[i]
 	}
 
-	pe.externalActivation <- &ChannelMessage{
+	pe.externalActivation <- &entity.ChannelMessage{
 		CurrentElement: currentElement,
 		ProcessID:      msg.ProcessID,
 	}
@@ -1951,7 +1925,7 @@ func (pe *ProcessExecutor) ExternalSendToMailBox(processName, processID, topicNa
 		pe.fnDebug(ctx, fmt.Sprintf("process %v send email %v ", process.UUID, msgs))
 	}
 
-	eventsByElement := make(map[string]*ChannelMessage)
+	eventsByElement := make(map[string]*entity.ChannelMessage)
 	// проходим по подписчикам и кидаем им в цикле сообщения
 	for i := range msgs {
 		elements, ok := process.elementByMessageName[msgs[i].Name]
@@ -1964,7 +1938,7 @@ func (pe *ProcessExecutor) ExternalSendToMailBox(processName, processID, topicNa
 					}
 					v, ok := eventsByElement[elements[j].UUID]
 					if !ok {
-						v = &ChannelMessage{
+						v = &entity.ChannelMessage{
 							CurrentElement: elements[j],
 							//Messages:       msg.CurrentElement.OutputMessages,
 							//Variables: msg.Variables,
