@@ -219,7 +219,66 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 
 		// анализ в зависимости от состояния - state = 0 может быть либо подключение к процессу либо старт процесса state = 1 ответ от топика или отправка сообщения
 		if req.ConnectToProcessRequest != nil {
-			// req.ConnectToProcessRequest.ProcessId
+			errorResult := "process not found"
+			result := "Error"
+
+			process, ok := s.processByProcessID[req.ConnectToProcessRequest.ProcessId]
+			if !ok {
+				process := s.processExecutor.GetProcess(req.ConnectToProcessRequest.ProcessId)
+				if process != nil {
+					// подключаем обработчики
+					handler, ok := s.handlersByProcessNameAndTopicName[req.StartProcessRequest.ProcessName]
+					if !ok {
+						logger.Info("Connect: handler not found", zap.String("process_name", req.StartProcessRequest.ProcessName))
+						continue
+					}
+					handler.sendExecuteTopic = sendExecuteTopic
+					s.processByProcessID[process.UUID] = process
+					go func() {
+						if <-process.Stopped {
+							vars := []*pb.Variable{}
+							for i := range process.Context.VariablesByName {
+								v := &pb.Variable{
+									Name:  process.Context.VariablesByName[i].Name,
+									Type:  process.Context.VariablesByName[i].Type,
+									Value: process.Context.VariablesByName[i].Value,
+								}
+								vars = append(vars, v)
+							}
+
+							resp := pb.Response{
+								Id:  s.idCounter,
+								Msg: "",
+								ProcessFinished: &pb.ProcessFinished{
+									ProcessName: req.StartProcessRequest.ProcessName,
+									ProcessId:   process.UUID,
+									Variables:   vars,
+								},
+							}
+							if err := srv.Send(&resp); err != nil {
+								logger.Info("Connect: send failed", zap.Error(err))
+							}
+						}
+					}()
+					result = "Ok"
+				}
+			}
+			s.idCounter += 1
+
+			resp := pb.Response{
+				Id:  s.idCounter,
+				Msg: "",
+				StartProcessResponse: &pb.StartProcessResponse{
+					ProcessName: req.StartProcessRequest.ProcessName,
+					ProcessId:   process.UUID,
+					Result:      result,
+					Error:       &errorResult,
+				},
+			}
+			if err := srv.Send(&resp); err != nil {
+				logger.Info("Connect: send failed", zap.Error(err))
+				return err
+			}
 		}
 
 		if req.StartProcessRequest != nil {
@@ -229,41 +288,42 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 			if err != nil {
 				result = "Error"
 				errorResult = fmt.Sprintf("failed start process %v", err)
-			}
-			// подключаем обработчики
-			handler, ok := s.handlersByProcessNameAndTopicName[req.StartProcessRequest.ProcessName]
-			if !ok {
-				logger.Info("Connect: handler not found", zap.String("process_name", req.StartProcessRequest.ProcessName))
-				continue
-			}
-			handler.sendExecuteTopic = sendExecuteTopic
-			s.processByProcessID[process.UUID] = process
-			go func() {
-				if <-process.Stopped {
-					vars := []*pb.Variable{}
-					for i := range process.Context.VariablesByName {
-						v := &pb.Variable{
-							Name:  process.Context.VariablesByName[i].Name,
-							Type:  process.Context.VariablesByName[i].Type,
-							Value: process.Context.VariablesByName[i].Value,
-						}
-						vars = append(vars, v)
-					}
-
-					resp := pb.Response{
-						Id:  s.idCounter,
-						Msg: "",
-						ProcessFinished: &pb.ProcessFinished{
-							ProcessName: req.StartProcessRequest.ProcessName,
-							ProcessId:   process.UUID,
-							Variables:   vars,
-						},
-					}
-					if err := srv.Send(&resp); err != nil {
-						logger.Info("Connect: send failed", zap.Error(err))
-					}
+			} else {
+				// подключаем обработчики
+				handler, ok := s.handlersByProcessNameAndTopicName[req.StartProcessRequest.ProcessName]
+				if !ok {
+					logger.Info("Connect: handler not found", zap.String("process_name", req.StartProcessRequest.ProcessName))
+					continue
 				}
-			}()
+				handler.sendExecuteTopic = sendExecuteTopic
+				s.processByProcessID[process.UUID] = process
+				go func() {
+					if <-process.Stopped {
+						vars := []*pb.Variable{}
+						for i := range process.Context.VariablesByName {
+							v := &pb.Variable{
+								Name:  process.Context.VariablesByName[i].Name,
+								Type:  process.Context.VariablesByName[i].Type,
+								Value: process.Context.VariablesByName[i].Value,
+							}
+							vars = append(vars, v)
+						}
+
+						resp := pb.Response{
+							Id:  s.idCounter,
+							Msg: "",
+							ProcessFinished: &pb.ProcessFinished{
+								ProcessName: req.StartProcessRequest.ProcessName,
+								ProcessId:   process.UUID,
+								Variables:   vars,
+							},
+						}
+						if err := srv.Send(&resp); err != nil {
+							logger.Info("Connect: send failed", zap.Error(err))
+						}
+					}
+				}()
+			}
 
 			s.idCounter += 1
 
