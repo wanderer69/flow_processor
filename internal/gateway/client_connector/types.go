@@ -26,4 +26,5 @@ type ProcessExecutor interface {
 	AddProcess(ctx context.Context, process *entity.Process) error
 	ExternalSendToMailBox(processName, processID, topicName string, msgs []*entity.Message) error
 	GetStopped() chan *process.FinishedProcessData
+	GetProcess(uuid string) *process.Process
 }

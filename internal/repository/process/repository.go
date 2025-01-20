@@ -185,6 +185,14 @@ func (r *Repository) GetNotFinishedByExecutorID(ctx context.Context, executorID 
 		Where("c.deleted_at IS NULL"))
 }
 
+func (r *Repository) GetAllByExecutorID(ctx context.Context) ([]*entity.StoreProcess, error) {
+	return r.selectMany(ctx, r.db.DB().
+		Where("(SELECT count(*) FROM processes as c1 WHERE length(c1.process_state) = 0 AND c1.process_id = c.process_id) = 0").
+		//Where("c.executor_id = ?", executorID).
+		//Where("c.process_id = c1.process_id").
+		Where("c.deleted_at IS NULL"))
+}
+
 func (r *Repository) DeleteByUUID(ctx context.Context, resourceUUID string) error {
 	dt := time.Now().UTC().Round(time.Millisecond)
 	m := model{

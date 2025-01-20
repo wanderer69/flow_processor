@@ -1075,6 +1075,10 @@ func (pe *ProcessExecutor) GetProcess(uuid string) *Process {
 	return process
 }
 
+func (pe *ProcessExecutor) GetProcessExecutor() *ProcessExecutor {
+	return pe
+}
+
 func (pe *ProcessExecutor) StartExecuteElement(msg *entity.ChannelMessage) (bool, error) {
 	isExternal := false
 	switch msg.CurrentElement.ElementType {
