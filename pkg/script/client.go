@@ -22,6 +22,7 @@ const (
 	LexemaOperator          string = "Operator"
 	LexemaString            string = "String"
 	LexemaIdentificator     string = "Identificator"
+	LexemaCondition         string = "Condition"
 )
 
 type Lexema struct {
@@ -73,6 +74,30 @@ func ParserLexema(s string) ([]*Lexema, error) {
 		case ")":
 			isOperator()
 			lexemas = append(lexemas, &Lexema{Lexema: LexemaCurlyBracketClose})
+		case ">":
+			fallthrough
+		case "<":
+			fallthrough
+		case "=":
+			if currentLexema == nil {
+				currentLexema = &Lexema{
+					Lexema: LexemaCondition,
+				}
+			}
+			if currentLexema.Lexema != LexemaCondition {
+				lexemas = append(lexemas, currentLexema)
+				currentLexema = &Lexema{
+					Lexema: LexemaCondition,
+				}
+			}
+			if len(currentLexema.Value) > 2 {
+				lexemas = append(lexemas, currentLexema)
+				currentLexema = &Lexema{
+					Lexema: LexemaCondition,
+				}
+			}
+			currentLexema.Value += string(r)
+
 		default:
 			if unicode.IsDigit(r) {
 				if currentLexema == nil {
@@ -123,14 +148,17 @@ const (
 )
 
 type PatternItem struct {
-	Type     string
-	Lexemas  []*Lexema
-	Link     string
-	Variable *entity.Variable
+	Type      string
+	Lexemas   []*Lexema
+	Link      string
+	Variable  *entity.Variable
+	Condition string
+	Expr      string
 }
 
 type Pattern struct {
 	Name         string
+	Case         int
 	PatternItems []*PatternItem
 }
 
@@ -146,6 +174,7 @@ type UsedPattern struct {
 var patterns []*Pattern = []*Pattern{
 	{
 		Name: "Begin",
+		Case: 0,
 		PatternItems: []*PatternItem{
 			{
 				Type: PatternTypeConst,
@@ -155,8 +184,50 @@ var patterns []*Pattern = []*Pattern{
 			},
 		},
 	},
+
 	{
 		Name: "Block",
+		Case: 1,
+		PatternItems: []*PatternItem{
+			{
+				Type: PatternTypeBlock,
+				Lexemas: []*Lexema{
+					{Lexema: LexemaCurlyBracketOpen, Value: "", Operator: ""},
+				},
+			},
+			{
+				Type: PatternTypeConst,
+				Lexemas: []*Lexema{
+					{Lexema: LexemaIdentificator, Value: "", Operator: ""},
+				},
+				Variable: &entity.Variable{
+					Name: "VarName",
+				},
+			},
+			{
+				Type: PatternTypeBlock,
+				Lexemas: []*Lexema{
+					{Lexema: LexemaCurlyBracketClose, Value: "", Operator: ""},
+				},
+			},
+		},
+	},
+	/*
+		{
+			Name: "Variable",
+			PatternItems: []*PatternItem{
+				{
+					Type: PatternTypeConst,
+					Lexemas: []*Lexema{
+						{Lexema: LexemaIdentificator, Value: "", Operator: ""},
+					},
+				},
+			},
+		},
+	*/
+	{
+		Name: "Condition",
+		Case: 2,
 		PatternItems: []*PatternItem{
 			{
 				Type: PatternTypeBlock,
@@ -180,20 +251,27 @@ var patterns []*Pattern = []*Pattern{
 				},
 			},
 			{
-				Type: PatternTypeBlock,
+				Type: PatternTypeConst,
 				Lexemas: []*Lexema{
-					{Lexema: LexemaCurlyBracketClose, Value: "", Operator: ""},
+					{Lexema: LexemaCondition, Value: "", Operator: ""},
+				},
+				Variable: &entity.Variable{
+					Name: "Condition",
 				},
 			},
-		},
-	},
-	{
-		Name: "Variable",
-		PatternItems: []*PatternItem{
 			{
 				Type: PatternTypeConst,
 				Lexemas: []*Lexema{
 					{Lexema: LexemaIdentificator, Value: "", Operator: ""},
+				},
+				Variable: &entity.Variable{
+					Name: "Value",
+				},
+			},
+			{
+				Type: PatternTypeBlock,
+				Lexemas: []*Lexema{
+					{Lexema: LexemaCurlyBracketClose, Value: "", Operator: ""},
 				},
 			},
 		},
@@ -213,13 +291,14 @@ func TranslateLexemaList(ll []*Lexema, context *entity.Context) ([]*entity.Varia
 	oldPos := 0
 	isStopped := false
 	for {
-		//fmt.Printf("state %v\r\n", state)
+		fmt.Printf("state %v\r\n", state)
 		switch state {
 		case 0:
 			if currentPattern == nil {
 				currentPatternCnt = 0
 			}
 			currentPattern = patterns[currentPatternCnt]
+			fmt.Printf("name %v\r\n", currentPattern.Name)
 			currentPatternItemsCnt = 0
 			currentLexemaInPatternItem = 0
 			oldPos = i
@@ -231,6 +310,9 @@ func TranslateLexemaList(ll []*Lexema, context *entity.Context) ([]*entity.Varia
 			if ll[i].Lexema == currentPattern.PatternItems[currentPatternItemsCnt].Lexemas[currentLexemaInPatternItem].Lexema {
 				switch currentPattern.PatternItems[currentPatternItemsCnt].Lexemas[currentLexemaInPatternItem].Lexema {
 				case LexemaIdentificator:
+					state = 4
+					continue
+				case LexemaCondition:
 					state = 4
 					continue
 				default:
@@ -254,7 +336,7 @@ func TranslateLexemaList(ll []*Lexema, context *entity.Context) ([]*entity.Varia
 			}
 			isStopped = true
 		case 3:
-			//fmt.Printf("name %v\r\n", currentPattern.Name)
+			// fmt.Printf("name %v\r\n", currentPattern.Name)
 			usedPattern.UsedPatterns = append(usedPattern.UsedPatterns, &UsedPatternItem{
 				Pattern:   currentPattern,
 				Variables: vars,
@@ -302,20 +384,102 @@ func TranslateLexemaList(ll []*Lexema, context *entity.Context) ([]*entity.Varia
 
 	variables := []*entity.Variable{}
 	for i := range usedPattern.UsedPatterns {
-		for j := range usedPattern.UsedPatterns[i].Variables {
-			//fmt.Printf("%v\r\n", usedPattern.UsedPatterns[i].Variables[j])
-			isResult := false
-			v, ok := context.VariablesByName[usedPattern.UsedPatterns[i].Variables[j].Value]
-			if ok {
-				switch v.Type {
-				case "boolean":
-					vb, err := strconv.ParseBool(v.Value)
-					if err != nil {
-						fmt.Printf("failed convertion bool %v: %v", v.Value, err)
-						vb = false
+		switch usedPattern.UsedPatterns[i].Pattern.Case {
+		case 1:
+			for j := range usedPattern.UsedPatterns[i].Variables {
+				//fmt.Printf("%v\r\n", usedPattern.UsedPatterns[i].Variables[j])
+				isResult := false
+				v, ok := context.VariablesByName[usedPattern.UsedPatterns[i].Variables[j].Value]
+				if ok {
+					switch v.Type {
+					case "boolean":
+						vb, err := strconv.ParseBool(v.Value)
+						if err != nil {
+							fmt.Printf("failed convertion bool %v: %v", v.Value, err)
+							vb = false
+						}
+						isResult = vb
 					}
-					isResult = vb
 				}
+				variables = append(variables, &entity.Variable{
+					Name:  ExecuteResult,
+					Type:  "boolean",
+					Value: fmt.Sprintf("%v", isResult),
+				})
+			}
+		case 2:
+			//variablesByName := make(map[string]*entity.Variable)
+			var v *entity.Variable
+			condition := ""
+			value := ""
+			isResult := false
+			// ищем переменные
+			for j := range usedPattern.UsedPatterns[i].Variables {
+				//fmt.Printf("%v\r\n", usedPattern.UsedPatterns[i].Variables[j])
+				//var ok bool
+				switch usedPattern.UsedPatterns[i].Variables[j].Name {
+				case "VarName":
+					vv, ok := context.VariablesByName[usedPattern.UsedPatterns[i].Variables[j].Value]
+					if ok {
+						v = vv
+					}
+				case "Condition":
+					condition = usedPattern.UsedPatterns[i].Variables[j].Value
+				case "Value":
+					value = usedPattern.UsedPatterns[i].Variables[j].Value
+				}
+				/*
+				   				vv, ok := context.VariablesByName[usedPattern.UsedPatterns[i].Variables[j].Value]
+				   				if ok {
+				   					switch v.Type {
+				   					case "boolean":
+				   						_, err := strconv.ParseBool(v.Value)
+				   						if err != nil {
+				   							fmt.Printf("failed convertion bool %v: %v", v.Value, err)
+				   						}
+				   					case "integer":
+				   						_, err := strconv.ParseInt(v.Value, 10, 64)
+				   						if err != nil {
+				   							fmt.Printf("failed convertion integer %v: %v", v.Value, err)
+				   						}
+				   					case "string":
+				   						_, err := strconv.ParseBool(v.Value)
+				   						if err != nil {
+				   							fmt.Printf("failed convertion bool %v: %v", v.Value, err)
+				   						}
+				   					}
+
+				   //						vv := &entity.Variable{
+				   //							Name:  v.Name,
+				   //							Type:  v.Type,
+				   //							Value: v.Value,
+				   //						}
+				   //						variables = append(variables, vv)
+				   //						variablesByName[vv.Name] = vv
+
+				   					v = vv
+				   				} else {
+				   					switch usedPattern.UsedPatterns[i].Variables[j].Name {
+				   					case "Condition":
+				   						condition = usedPattern.UsedPatterns[i].Variables[j].Value
+				   					case "Value":
+				   						value = usedPattern.UsedPatterns[i].Variables[j].Value
+				   					}
+				   				}
+				*/
+			}
+			if len(condition) == 0 {
+				return nil, fmt.Errorf("condition not found")
+			}
+			if len(value) == 0 {
+				return nil, fmt.Errorf("value not found")
+			}
+			if v == nil {
+				return nil, fmt.Errorf("variable not found")
+			}
+			switch condition {
+			case "==":
+				isResult = v.Value == value
 			}
 			variables = append(variables, &entity.Variable{
 				Name:  ExecuteResult,
