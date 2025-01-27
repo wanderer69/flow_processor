@@ -76,10 +76,18 @@ func TestPattern2(t *testing.T) {
 	*/
 	context.VariablesByName["isTest"] = &entity.Variable{
 		Name:  "isTest",
-		Type:  "boolean",
-		Value: "true",
+		Type:  "string",
+		Value: "not_value",
 	}
 	vars, err := TranslateLexemaList(ll, &context)
+	require.NoError(t, err)
+	require.Len(t, vars, 1)
+	context.VariablesByName["isTest"] = &entity.Variable{
+		Name:  "isTest",
+		Type:  "string",
+		Value: "value",
+	}
+	vars, err = TranslateLexemaList(ll, &context)
 	require.NoError(t, err)
 	require.Len(t, vars, 1)
 }
