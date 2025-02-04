@@ -99,7 +99,7 @@ func (cc *ConverterClient) Check(processRaw string) (bool, error) {
 	if err != nil {
 		return false, nil
 	}
-	fmt.Printf("`%#v`\r\n", data)
+	//fmt.Printf("`%#v`\r\n", data)
 	/*
 		verI, ok := data["version"]
 		if !ok {
