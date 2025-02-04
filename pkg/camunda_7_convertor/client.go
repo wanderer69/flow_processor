@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
+	"strconv"
+	"strings"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
@@ -22,8 +25,76 @@ func NewConverterClient() *ConverterClient {
 	return &ConverterClient{}
 }
 
+type mapTag struct {
+	root map[string]interface{}
+}
+
+/*
+func (c *mapTag) UnmarshalXML1(d *xml.Decoder, start xml.StartElement) error {
+	c.root = map[string]interface{}
+
+	key := ""
+	val := ""
+
+	for {
+		t, _ := d.Token()
+		switch tt := t.(type) {
+		case xml.StartElement:
+			fmt.Println(">", tt)
+
+		case xml.EndElement:
+			fmt.Println("<", tt)
+			if tt.Name == start.Name {
+				return nil
+			}
+
+			if tt.Name.Local == "enabled" {
+				c.m[key] = val
+			}
+		}
+	}
+}
+*/
+
+func (x *mapTag) UnmarshalXML(decoder *xml.Decoder, start xml.StartElement) error {
+	x.root = map[string]any{"_": start.Name.Local}
+	path := []map[string]any{x.root}
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		switch elem := token.(type) {
+		case xml.StartElement:
+			newMap := map[string]any{"_": elem.Name.Local}
+			path[len(path)-1][elem.Name.Local] = newMap
+			path = append(path, newMap)
+		case xml.EndElement:
+			path = path[:len(path)-1]
+		case xml.CharData:
+			val := strings.TrimSpace(string(elem))
+			if val == "" {
+				break
+			}
+			curName := path[len(path)-1]["_"].(string)
+			path[len(path)-2][curName] = typeConvert(val)
+		}
+	}
+}
+
+func typeConvert(s string) any {
+	f, err := strconv.ParseFloat(s, 64)
+	if err == nil {
+		return f
+	}
+	return s
+}
+
 func (cc *ConverterClient) Check(processRaw string) (bool, error) {
-	var data map[string]interface{}
+	var data mapTag // map[string]interface{}
 	err := xml.Unmarshal([]byte(processRaw), &data)
 	if err != nil {
 		return false, nil
