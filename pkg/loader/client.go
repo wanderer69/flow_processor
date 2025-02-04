@@ -28,10 +28,10 @@ func (l *Loader) Load(processRaw string) (*entity.Process, error) {
 		if ok {
 			loadedProcess, err := l.camunda7Convertor.Convert(processRaw)
 			if err == nil {
-				var process entity.Process
+				var process []*entity.Process
 				err := json.Unmarshal([]byte(loadedProcess), &process)
 				if err == nil {
-					return &process, nil
+					return process[0], nil
 				}
 			}
 		}
