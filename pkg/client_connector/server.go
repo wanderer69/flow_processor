@@ -67,8 +67,17 @@ func (s *Server) AddProcess(ctx context.Context, in *pb.AddProcessRequest) (*pb.
 		}, nil
 	}
 
-	s.processExecutor.AddProcess(ctx, process)
-	return &pb.AddProcessResponse{}, nil
+	err = s.processExecutor.AddProcess(ctx, process)
+	if err != nil {
+		errorRaw := fmt.Sprintf("Add process: %v", err)
+		return &pb.AddProcessResponse{
+			Error: &errorRaw,
+		}, nil
+	}
+
+	return &pb.AddProcessResponse{
+		ProcessName: process.Name,
+	}, nil
 }
 
 func (s *Server) SetHandler(ctx context.Context, in *pb.SetHandlerRequest) (*pb.SetHandlerResponse, error) {
