@@ -521,6 +521,7 @@ func (pe *ProcessExecutor) CheckElement(elementByUUID map[string]*entity.Element
 			return fmt.Errorf("must be greate 1 outputs")
 		}
 		isEmptyScript := 0
+		notEmptyScriptCnt := 0
 		for i := range element.OutputsElementID {
 			element := pe.getElementByUUID(elementByUUID, element.OutputsElementID[i])
 			if element.ElementType != entity.ElementTypeFlow {
@@ -529,10 +530,13 @@ func (pe *ProcessExecutor) CheckElement(elementByUUID map[string]*entity.Element
 
 			if len(element.Script) == 0 {
 				isEmptyScript++
+				notEmptyScriptCnt++
 			}
 		}
-		if isEmptyScript != 1 {
-			return fmt.Errorf("must be only one empty script")
+		if notEmptyScriptCnt == 1 {
+			if isEmptyScript != 1 {
+				return fmt.Errorf("must be only one empty script")
+			}
 		}
 
 	case entity.ElementTypeParallelGateway:
