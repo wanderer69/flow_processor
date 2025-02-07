@@ -430,7 +430,7 @@ func TestProcessSimpleIII(t *testing.T) {
 
 	client := integration.NewProcessorClient("", port)
 
-	currentProcessName := "test_process"
+	currentProcessName := "Тест1" // "test_process"
 	topic1 := "topic1"
 	topic2 := "topic2"
 	taskName3 := "element_user_task_1"
@@ -468,7 +468,7 @@ func TestProcessSimpleIII(t *testing.T) {
 	}
 
 	var currentProcessId *string
-	processRawFull := makeDiagrammII(t, currentProcessName, topic1, topic2, taskName3)
+	processRawFull := makeDiagrammIII(t, currentProcessName, topic1, topic2, taskName3)
 
 	processByProcessName := make(map[string]*entity.Diagramm)
 
