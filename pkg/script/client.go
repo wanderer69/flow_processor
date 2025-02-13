@@ -481,6 +481,7 @@ func TranslateLexemaList(ll []*Lexema, context *entity.Context) ([]*entity.Varia
 			case "==":
 				isResult = v.Value == value
 			}
+			fmt.Printf("condition result %v %v\r\n", ExecuteResult, isResult)
 			variables = append(variables, &entity.Variable{
 				Name:  ExecuteResult,
 				Type:  "boolean",

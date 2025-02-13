@@ -293,7 +293,17 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 		if req.StartProcessRequest != nil {
 			errorResult := ""
 			result := "Ok"
-			process, err := s.processExecutor.StartProcess(ctx, req.StartProcessRequest.ProcessName, nil)
+			vars := []*entity.Variable{}
+			for i := range req.StartProcessRequest.Variables {
+				variable := &entity.Variable{
+					Name:  req.StartProcessRequest.Variables[i].Name,
+					Type:  req.StartProcessRequest.Variables[i].Type,
+					Value: req.StartProcessRequest.Variables[i].Value,
+				}
+				vars = append(vars, variable)
+			}
+
+			process, err := s.processExecutor.StartProcess(ctx, req.StartProcessRequest.ProcessName, vars)
 			if err != nil {
 				result = "Error"
 				errorResult = fmt.Sprintf("failed start process %v", err)
