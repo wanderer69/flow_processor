@@ -1173,6 +1173,7 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *entity.ChannelMessage) (bool
 
 	case entity.ElementTypeExclusiveGateway:
 		isEmptyScript := 0
+		notEmptyScriptCnt := 0
 		process := pe.GetProcess(msg.ProcessID)
 		for i := range msg.CurrentElement.OutputsElementID {
 			element := process.GetElementByUUID(msg.CurrentElement.OutputsElementID[i])
@@ -1182,10 +1183,13 @@ func (pe *ProcessExecutor) StartExecuteElement(msg *entity.ChannelMessage) (bool
 
 			if len(element.Script) == 0 {
 				isEmptyScript++
+				notEmptyScriptCnt++
 			}
 		}
-		if isEmptyScript != 1 {
-			return false, fmt.Errorf("must be only one empty script")
+		if notEmptyScriptCnt == 1 {
+			if isEmptyScript != 1 {
+				return false, fmt.Errorf("must be only one empty script")
+			}
 		}
 		/*
 			nextElements := process.GetNextElements(msg.CurrentElement.OutputsElementID)
