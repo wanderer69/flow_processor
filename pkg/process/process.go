@@ -1402,12 +1402,12 @@ func (pe *ProcessExecutor) FinishExecuteElement(msg *entity.ChannelMessage) ([]*
 			}
 			process.SetData(msg.CurrentElement.UUID, ped)
 		} else {
-			ped, ok := process.GetData(msg.CurrentElement.UUID)
-			if !ok {
-				ped = &entity.ProcessElementData{
-					NextElements: executedElements,
-				}
+			//ped, ok := process.GetData(msg.CurrentElement.UUID)
+			//if !ok {
+			ped := &entity.ProcessElementData{
+				NextElements: executedElements,
 			}
+			//}
 			process.SetData(msg.CurrentElement.UUID, ped)
 		}
 
