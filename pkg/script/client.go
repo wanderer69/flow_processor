@@ -291,14 +291,14 @@ func TranslateLexemaList(ll []*Lexema, context *entity.Context) ([]*entity.Varia
 	oldPos := 0
 	isStopped := false
 	for {
-		fmt.Printf("state %v\r\n", state)
+		//fmt.Printf("state %v\r\n", state)
 		switch state {
 		case 0:
 			if currentPattern == nil {
 				currentPatternCnt = 0
 			}
 			currentPattern = patterns[currentPatternCnt]
-			fmt.Printf("name %v\r\n", currentPattern.Name)
+			//fmt.Printf("name %v\r\n", currentPattern.Name)
 			currentPatternItemsCnt = 0
 			currentLexemaInPatternItem = 0
 			oldPos = i
