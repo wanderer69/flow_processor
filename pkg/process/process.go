@@ -1550,9 +1550,22 @@ func (pe *ProcessExecutor) NextProcessStep(ctx context.Context, msg *entity.Chan
 			}
 			if msg.CurrentElement.IsExternalByTopic {
 				// запускаем отдачу в топик
+				variables := []*entity.Variable{}
+				for i := range msg.CurrentElement.InputVars {
+					v, ok := process.Context.VariablesByName[msg.CurrentElement.InputVars[i].Name]
+					if ok {
+						variables = append(variables, v)
+					} else {
+						if len(msg.CurrentElement.InputVars[i].Value) > 0 {
+							variables = append(variables, msg.CurrentElement.InputVars[i])
+						}
+					}
+				}
 				pe.activateTopic <- &entity.ChannelMessage{
 					CurrentElement: msg.CurrentElement,
 					ProcessID:      msg.ProcessID,
+					Variables:      variables,
+					Messages:       msg.Messages,
 				}
 			}
 			if msg.CurrentElement.IsTimer {
@@ -1677,6 +1690,8 @@ func (pe *ProcessExecutor) ProcessLoad(ctx context.Context, state string, msg *e
 				pe.activateTopic <- &entity.ChannelMessage{
 					CurrentElement: msg.CurrentElement,
 					ProcessID:      msg.ProcessID,
+					Variables:      msg.Variables,
+					Messages:       msg.Messages,
 				}
 			}
 			if msg.CurrentElement.IsTimer {
