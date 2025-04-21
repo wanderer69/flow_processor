@@ -39,23 +39,16 @@ func main() {
 	}
 
 	config := zap.NewProductionEncoderConfig()
-	defaultLogLevel := zapcore.WarnLevel
 	if cnf.AppEnv == "dev" {
 		config = zap.NewDevelopmentEncoderConfig()
-		defaultLogLevel = zapcore.DebugLevel
 	}
 	config.EncodeTime = zapcore.ISO8601TimeEncoder
 	fileEncoder := zapcore.NewJSONEncoder(config)
-	logFile, _ := os.OpenFile("log.json", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	writer := zapcore.AddSync(logFile)
 
-	//	consoleEncoder := zapcore.NewConsoleEncoder(config)
 	stdout := zapcore.AddSync(os.Stdout)
 	level := zap.NewAtomicLevelAt(zap.InfoLevel)
 
 	core := zapcore.NewTee(
-		zapcore.NewCore(fileEncoder, writer, defaultLogLevel),
-		//		zapcore.NewCore(consoleEncoder, stdout, level),
 		zapcore.NewCore(fileEncoder, stdout, level),
 	)
 	zapLogger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
@@ -65,7 +58,7 @@ func main() {
 	undo := zap.ReplaceGlobals(zapLogger)
 	defer undo()
 
-	zapLogger.Info("Started service pushbroker")
+	zapLogger.Info("Starting service flow processor")
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT)
@@ -91,7 +84,7 @@ func main() {
 		panic(fmt.Errorf("error dao initialization: %w", err))
 	}
 	defer sql.Close()
-	zapLogger.Info("database connected")
+	zapLogger.Info("Database connected")
 
 	processRepo := processRepository.NewRepository(dao)
 	diagrammRepo := diagrammRepository.NewRepository(dao)
@@ -113,6 +106,7 @@ func main() {
 		panic(err)
 	}()
 
+	zapLogger.Info("Service started")
 	for {
 		select {
 		case <-sigCh:

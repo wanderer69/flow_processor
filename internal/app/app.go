@@ -20,6 +20,7 @@ import (
 	"github.com/wanderer69/flow_processor/pkg/process"
 	"github.com/wanderer69/flow_processor/pkg/store"
 	"github.com/wanderer69/flow_processor/pkg/timer"
+	"go.uber.org/zap"
 )
 
 type Application struct {
@@ -41,6 +42,7 @@ func NewApplication(
 
 func (a *Application) Init(fsSPA embed.FS, fsVersion embed.FS, cnf config.Config) error {
 	ctx := context.Background()
+	logger := zap.L()
 	a.cnf = cnf
 	topicClient := externaltopic.NewExternalTopic()
 	timerClient := timer.NewTimer()
@@ -63,7 +65,7 @@ func (a *Application) Init(fsSPA embed.FS, fsVersion embed.FS, cnf config.Config
 	go func() {
 		err := clientconnector.ServerConnect(int(port), topicClient, externalActivationClient, pe)
 		if err != nil {
-
+			logger.Error("ServerConnect", zap.Error(err))
 		}
 	}()
 
