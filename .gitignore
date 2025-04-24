@@ -1,0 +1,6 @@
+.env
+vendor
+gopath
+scripts/
+.rsyncignore
+.vscode

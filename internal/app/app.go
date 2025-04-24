@@ -61,7 +61,7 @@ func (a *Application) Init(fsSPA embed.FS, fsVersion embed.FS, cnf config.Config
 		return nil
 	})
 
-	port := cnf.AppPort
+	port := cnf.AppGRPCPort
 	go func() {
 		err := clientconnector.ServerConnect(int(port), topicClient, externalActivationClient, pe)
 		if err != nil {
@@ -120,5 +120,5 @@ func (a *Application) Init(fsSPA embed.FS, fsVersion embed.FS, cnf config.Config
 
 func (a *Application) Start() error {
 	a.e.Server.ReadHeaderTimeout = time.Second * 5
-	return a.e.Start(fmt.Sprintf("0.0.0.0:%d", a.cnf.AppPort))
+	return a.e.Start(fmt.Sprintf("0.0.0.0:%d", a.cnf.AppWebPort))
 }
