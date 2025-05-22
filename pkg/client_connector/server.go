@@ -39,12 +39,14 @@ type Server struct {
 	handlersByProcessNameAndTopicName map[string]*Handler
 	idCounter                         int32
 	processByProcessID                map[string]*process.Process
+	processDuration                   int
 }
 
 func NewServer(
 	topicClient ExternalTopic,
 	externalActivationClient ExternalActivation,
 	processExecutor ProcessExecutor,
+	processDuration int,
 ) *Server {
 	return &Server{
 		topicClient:                       topicClient,
@@ -52,6 +54,7 @@ func NewServer(
 		processExecutor:                   processExecutor,
 		handlersByProcessNameAndTopicName: make(map[string]*Handler),
 		processByProcessID:                make(map[string]*process.Process),
+		processDuration:                   processDuration,
 	}
 }
 
@@ -442,18 +445,18 @@ func (s *Server) Connect(srv pb.ClientConnector_ConnectServer) error {
 			}
 			s.externalActivationClient.CompleteActivation(ctx, req.ExternalActivation.ProcessName, req.ExternalActivation.ProcessId, req.ExternalActivation.TaskName, msgs, vars)
 		}
-		time.Sleep(time.Duration(1) * time.Millisecond)
+		time.Sleep(time.Duration(s.processDuration) * time.Millisecond)
 	}
 }
 
-func ServerConnect(port int, topicClient ExternalTopic, externalActivationClient ExternalActivation, processExecutor ProcessExecutor) error {
+func ServerConnect(port int, topicClient ExternalTopic, externalActivationClient ExternalActivation, processExecutor ProcessExecutor, processDuration int) error {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
 
 	s := grpc.NewServer()
-	srv := NewServer(topicClient, externalActivationClient, processExecutor)
+	srv := NewServer(topicClient, externalActivationClient, processExecutor, processDuration)
 	pb.RegisterClientConnectorServer(s, srv)
 
 	if err := s.Serve(lis); err != nil {

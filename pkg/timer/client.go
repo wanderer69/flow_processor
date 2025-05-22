@@ -47,9 +47,10 @@ type Timer struct {
 
 	activate chan *internalTimer
 
-	mu          *sync.Mutex
-	msgsRoot    *internalEvent
-	msgsCurrent *internalEvent
+	mu              *sync.Mutex
+	msgsRoot        *internalEvent
+	msgsCurrent     *internalEvent
+	processDuration int
 }
 
 const (
@@ -62,39 +63,41 @@ type internalEvent struct {
 	next      *internalEvent
 }
 
-func NewTimer() *Timer {
+func NewTimer(processDuration int) *Timer {
 	et := &Timer{
 		activateTimerHandlersByTopicNameAndProcessName: make(map[string]*timerHandler),
-		activate: make(chan *internalTimer),
-		mu:       &sync.Mutex{},
+		activate:        make(chan *internalTimer),
+		mu:              &sync.Mutex{},
+		processDuration: processDuration,
 	}
+
 	go func() {
 		ctx := context.Background()
 		for {
-			time.Sleep(time.Duration(1) * time.Millisecond)
-			for {
-				var msg *internalEvent
-				msg = nil
-				et.mu.Lock()
-				if et.msgsRoot != nil {
-					msg = et.msgsRoot
-					et.msgsRoot = msg.next
-					if et.msgsRoot == nil {
-						et.msgsCurrent = nil
-					}
+			time.Sleep(time.Duration(et.processDuration) * time.Millisecond)
+			//				for {
+			var msg *internalEvent
+			msg = nil
+			et.mu.Lock()
+			if et.msgsRoot != nil {
+				msg = et.msgsRoot
+				et.msgsRoot = msg.next
+				if et.msgsRoot == nil {
+					et.msgsCurrent = nil
 				}
-				et.mu.Unlock()
-				if msg != nil {
-					switch msg.eventType {
-					case eventTypeActivate:
-						err := et.ActivateTimer(ctx, msg.timer.processName, msg.timer.processID, msg.timer.timerID, msg.timer.activationTime, msg.timer.msgs, msg.timer.vars)
-						if err != nil {
-							fmt.Printf("failed call ActivateTopic: %v\r\n", err)
-						}
+			}
+			et.mu.Unlock()
+			if msg != nil {
+				switch msg.eventType {
+				case eventTypeActivate:
+					err := et.ActivateTimer(ctx, msg.timer.processName, msg.timer.processID, msg.timer.timerID, msg.timer.activationTime, msg.timer.msgs, msg.timer.vars)
+					if err != nil {
+						fmt.Printf("failed call ActivateTopic: %v\r\n", err)
 					}
 				}
 			}
 		}
+		//			}
 	}()
 
 	return et
@@ -139,6 +142,7 @@ func (et *Timer) Set(ctx context.Context, processName, processID string, timerID
 		go func() {
 			isStopped := false
 			for {
+				time.Sleep(time.Duration(et.processDuration) * time.Millisecond)
 				select {
 				case t := <-currentTimerHandler.ticker.C:
 					event := &internalEvent{

@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package frontprocessorclient;
+option go_package="../pkg/gen";
+
+service FrontClientConnector {
+  rpc Login(LoginRequest) returns (LoginResponse) {}
+  rpc Connect (stream Request) returns (stream Response) {}
+}
+
+message LoginRequest {
+  string login = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string token = 1;
+  optional string error = 2;
+}
+
+message ListProcessesRequest {
+  string token = 1;
+}
+
+message Process {
+  string process_id = 1;
+  string application_id = 2;
+  string state = 3;
+}
+
+message ListProcessesResponse {
+  repeated Process processes = 1;
+  optional string error = 2;
+  string result = 3;
+}
+
+message ListProcessFlowsRequest {
+  string token = 1;
+  string process_id = 2;
+}
+
+message ProcessFlow {
+  string process_id = 1;
+  string process_name = 2;
+  repeated string process_states = 3;
+  string state = 4;
+//  string topic_name = 5;
+  repeated Message messages = 6;
+  repeated Variable variables = 7;
+  string execute = 8;
+  string data = 9;
+}
+
+message ListProcessFlowsResponse {
+  repeated ProcessFlow process_flows = 1;
+  optional string error = 2;
+  string result = 3;
+}
+
+message ProcessEventResponse {
+  string process_id = 1;
+  string state = 2;
+  optional ProcessFlow process_flow = 3;
+}
+
+message Request {
+  int32 id = 1;
+  string msg = 2;
+  optional ListProcessesRequest list_processes_request = 3;
+  optional ListProcessFlowsRequest list_process_flows_request = 4;
+}
+
+message Response {
+  int32 id = 1;
+  string msg = 2;
+  optional ListProcessesResponse list_processes_response = 3;
+  optional ListProcessFlowsResponse list_process_flows_response = 4;
+  optional ProcessEventResponse process_event_response = 5;
+}
+
+message Field {
+  string name = 1;
+  string type = 2;
+  string value = 3;
+}
+
+message Variable {
+  string name = 1;
+  string type = 2;
+  string value = 3;
+}
+
+message Message {
+  string name = 1;
+  repeated Field fields = 2;
+}

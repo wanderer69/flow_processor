@@ -26,3 +26,8 @@ type ProcessExecutor interface {
 	GetStopped() chan *process.FinishedProcessData
 	GetProcessExecutor() *process.ProcessExecutor
 }
+
+type FrontUser interface {
+	Register(ctx context.Context, login, password string) error
+	Get(ctx context.Context, login, password string) error
+}

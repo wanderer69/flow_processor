@@ -19,3 +19,8 @@ type diagrammRepository interface {
 	Update(ctx context.Context, c *entity.Diagramm) error
 	GetByName(ctx context.Context, name string) ([]*entity.Diagramm, error)
 }
+
+type frontUser interface {
+	Register(ctx context.Context, login, password string) error
+	Get(ctx context.Context, login, password string) error
+}

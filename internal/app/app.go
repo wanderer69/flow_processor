@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"github.com/wanderer69/flow_processor/internal/config"
+	frontconnector "github.com/wanderer69/flow_processor/internal/gateway/front_connector"
 	camunda7convertor "github.com/wanderer69/flow_processor/pkg/camunda_7_convertor"
 	clientconnector "github.com/wanderer69/flow_processor/pkg/client_connector"
 	externalactivation "github.com/wanderer69/flow_processor/pkg/external_activation"
@@ -26,6 +27,7 @@ import (
 type Application struct {
 	processRepository  processRepository
 	diagrammRepository diagrammRepository
+	frontUser          frontUser
 	e                  *echo.Echo
 	cnf                config.Config
 }
@@ -33,10 +35,12 @@ type Application struct {
 func NewApplication(
 	processRepository processRepository,
 	diagrammRepository diagrammRepository,
+	frontUser frontUser,
 ) *Application {
 	return &Application{
 		processRepository:  processRepository,
 		diagrammRepository: diagrammRepository,
+		frontUser:          frontUser,
 	}
 }
 
@@ -44,9 +48,9 @@ func (a *Application) Init(fsSPA embed.FS, fsVersion embed.FS, cnf config.Config
 	ctx := context.Background()
 	logger := zap.L()
 	a.cnf = cnf
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(cnf.TopicProcessDuration)
+	timerClient := timer.NewTimer(cnf.TimerProcessDuration)
+	externalActivationClient := externalactivation.NewExternalActivation(cnf.ExternalProcessDuration)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
 	loader := loader.NewLoader(camunda7ConvertorClient, internalFormatClient)
@@ -54,21 +58,25 @@ func (a *Application) Init(fsSPA embed.FS, fsVersion embed.FS, cnf config.Config
 
 	stop := make(chan struct{})
 
-	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, cnf.GlobalProcessDuration)
 
 	pe.SetLogger(ctx, func(ctx context.Context, msg string) error {
 		fmt.Printf("%v\r\n", msg)
 		return nil
 	})
-
-	port := cnf.AppGRPCPort
 	go func() {
-		err := clientconnector.ServerConnect(int(port), topicClient, externalActivationClient, pe)
+		err := clientconnector.ServerConnect(int(cnf.AppGRPCPort), topicClient, externalActivationClient, pe, cnf.ClientProcessDuration)
 		if err != nil {
 			logger.Error("ServerConnect", zap.Error(err))
 		}
 	}()
 
+	go func() {
+		err := frontconnector.ServerConnectWeb(int(cnf.AppFrontGRPCPort), pe, storeClient, a.frontUser, fsSPA, cnf.WebProcessDuration)
+		if err != nil {
+			logger.Error("ServerConnect", zap.Error(err))
+		}
+	}()
 	time.Sleep(time.Second)
 
 	e := echo.New()
@@ -79,6 +87,14 @@ func (a *Application) Init(fsSPA embed.FS, fsVersion embed.FS, cnf config.Config
 	}))
 
 	e.Any("/health-check/", func(c echo.Context) error {
+		c.Response().Writer.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	e.Any("/", func(c echo.Context) error {
+		u := c.Request().URL
+		l := strings.Split(u.Path, "/spa/")
+		fmt.Printf("/l - %v\r\n", l)
 		c.Response().Writer.WriteHeader(http.StatusOK)
 		return nil
 	})
@@ -94,26 +110,41 @@ func (a *Application) Init(fsSPA embed.FS, fsVersion embed.FS, cnf config.Config
 		c.Response().Writer.Write(result)
 		return c.JSON(state, nil)
 	})
+	/*
+		e.Any("/spa/*", func(c echo.Context) error {
+			u := c.Request().URL
+			l := strings.Split(strings.Trim(u.Path, " \r\n"), "/spa/")
+			fmt.Printf(">%v l - %v %v\r\n", u.Path, l, len(l))
+			if len(l) == 2 {
+				fileName := l[1]
+				if len(l[1]) == 0 {
+					fileName = "index.html"
+				}
+				fmt.Printf("fileName %v\r\n", fileName)
+				file, err := fsSPA.ReadFile("spa/" + fileName)
+				result := file
+				state := http.StatusOK
+				if err != nil {
+					state = http.StatusBadGateway
+					result = []byte(fmt.Sprintf("%v", err))
+				}
 
-	e.Any("/spa/", func(c echo.Context) error {
-		u := c.Request().URL
-		l := strings.Split(u.Path, "/spa/")
-		if len(l) > 0 {
-			file, err := fsSPA.ReadFile("spa/index.html")
-			result := file
-			state := http.StatusOK
-			if err != nil {
-				state = http.StatusBadGateway
-				result = []byte(fmt.Sprintf("%v", err))
+				c.Response().Writer.WriteHeader(state)
+				c.Response().Writer.Write(result)
+				//fmt.Printf("file %v\r\n", string(result))
+
+				//return c.JSON(state, nil)
+				return nil
+
 			}
+			result := []byte("{ not found}")
+			state := http.StatusNotFound
+			c.Response().Writer.WriteHeader(state)
 			c.Response().Writer.Write(result)
-			return c.JSON(state, nil)
-		}
-		result := []byte("{ not found}")
-		state := http.StatusNotFound
-		c.Response().Writer.Write(result)
-		return c.JSON(state, nil)
-	})
+			// return c.JSON(state, nil)
+			return nil
+		})
+	*/
 	a.e = e
 	return nil
 }

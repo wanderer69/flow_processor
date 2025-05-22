@@ -27,9 +27,9 @@ func TestServerSimpleI(t *testing.T) {
 	logger.SetLogger()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
 
@@ -39,11 +39,11 @@ func TestServerSimpleI(t *testing.T) {
 	storeClient := store.NewStore(loader, processRepo, diagrammRepo)
 	stop := make(chan struct{})
 
-	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	port := 50005
 	go func() {
-		require.NoError(t, ServerConnect(port, topicClient, externalActivationClient, pe))
+		require.NoError(t, ServerConnect(port, topicClient, externalActivationClient, pe, 1))
 	}()
 
 	time.Sleep(time.Second)
@@ -53,7 +53,7 @@ func TestServerSimpleI(t *testing.T) {
 		return nil
 	})
 
-	client := integration.NewProcessorClient("", port)
+	client := integration.NewProcessorClient("", port, 1, 10)
 
 	currentProcessName := "test_process"
 	topic1 := "topic1"
@@ -208,9 +208,9 @@ func TestProcessSimpleII(t *testing.T) {
 	logger.SetLogger()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
 
@@ -220,11 +220,11 @@ func TestProcessSimpleII(t *testing.T) {
 	storeClient := store.NewStore(loader, processRepo, diagrammRepo)
 	stop := make(chan struct{})
 
-	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	port := 50005
 	go func() {
-		require.NoError(t, ServerConnect(port, topicClient, externalActivationClient, pe))
+		require.NoError(t, ServerConnect(port, topicClient, externalActivationClient, pe, 1))
 	}()
 
 	time.Sleep(time.Second)
@@ -234,7 +234,7 @@ func TestProcessSimpleII(t *testing.T) {
 		return nil
 	})
 
-	client := integration.NewProcessorClient("", port)
+	client := integration.NewProcessorClient("", port, 1, 10)
 
 	currentProcessName := "test_process"
 	topic1 := "topic1"
@@ -402,9 +402,9 @@ func TestProcessSimpleIII(t *testing.T) {
 	logger.SetLogger()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
 
@@ -414,11 +414,11 @@ func TestProcessSimpleIII(t *testing.T) {
 	storeClient := store.NewStore(loader, processRepo, diagrammRepo)
 	stop := make(chan struct{})
 
-	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := process.NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	port := 50005
 	go func() {
-		require.NoError(t, ServerConnect(port, topicClient, externalActivationClient, pe))
+		require.NoError(t, ServerConnect(port, topicClient, externalActivationClient, pe, 1))
 	}()
 
 	time.Sleep(time.Second)
@@ -428,7 +428,7 @@ func TestProcessSimpleIII(t *testing.T) {
 		return nil
 	})
 
-	client := integration.NewProcessorClient("", port)
+	client := integration.NewProcessorClient("", port, 1, 10)
 
 	currentProcessName := "Тест1" // "test_process"
 	topic1 := "topic1"

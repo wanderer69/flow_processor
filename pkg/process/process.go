@@ -95,11 +95,12 @@ type ProcessExecutor struct {
 	externalActivationAgent ExternalActivation
 	storeClient             StoreClient
 
-	fnDebug     func(ctx context.Context, msg string) error
-	broker      func()
-	mu          *sync.Mutex
-	msgsRoot    *InternalEvent
-	msgsCurrent *InternalEvent
+	fnDebug         func(ctx context.Context, msg string) error
+	broker          func()
+	mu              *sync.Mutex
+	msgsRoot        *InternalEvent
+	msgsCurrent     *InternalEvent
+	processDuration int
 }
 
 const (
@@ -125,6 +126,7 @@ func NewProcessExecutor(
 	externalActivationAgent ExternalActivation,
 	storeClient StoreClient,
 	stop chan struct{},
+	processDuration int,
 ) *ProcessExecutor {
 	ctx := context.Background()
 	pe := &ProcessExecutor{
@@ -154,7 +156,7 @@ func NewProcessExecutor(
 		muEventType := sync.Mutex{}
 		doubleStop := make(chan struct{})
 		go func() {
-			time.Sleep(time.Duration(10) * time.Microsecond)
+			time.Sleep(time.Duration(pe.processDuration) * time.Microsecond)
 			for {
 				var event *InternalEvent = nil
 				select {
@@ -221,16 +223,18 @@ func NewProcessExecutor(
 		}()
 		go func() {
 			for {
+				//time.Sleep(time.Duration(pe.processDuration) * time.Millisecond)
+				ticker := time.NewTicker(time.Duration( /*pe.processDuration*/ 50) * time.Millisecond)
 				select {
 				case <-doubleStop:
 					pe.ProcessExecutorFinished(ctx, "process executor interrupted")
 					return
-				default:
+				case <-ticker.C:
+					//default:
 				}
-				time.Sleep(time.Duration(5) * time.Millisecond)
 				//	for {
 				var msg *InternalEvent
-				msg = nil
+				//msg = nil
 				muEventType.Lock()
 				pe.mu.Lock()
 				if pe.msgsRoot != nil {
@@ -370,6 +374,7 @@ func (pe *ProcessExecutor) ProcessFinished(ctx context.Context, processID string
 			if currentMsg == nil {
 				break
 			}
+			time.Sleep(time.Duration(pe.processDuration) * time.Millisecond)
 		}
 	}
 	pe.mu.Unlock()
