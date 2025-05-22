@@ -36,6 +36,8 @@ type ExternalTopic struct {
 	mu          *sync.Mutex
 	msgsRoot    *internalEvent
 	msgsCurrent *internalEvent
+
+	processDuration int
 }
 
 const (
@@ -49,18 +51,20 @@ type internalEvent struct {
 	next      *internalEvent
 }
 
-func NewExternalTopic() *ExternalTopic {
+func NewExternalTopic(processDuration int) *ExternalTopic {
 	et := &ExternalTopic{
 		topicsByProcessName:                           make(map[string][]string),
 		sendTopicHandlersByTopicNameAndProcessName:    make(map[string]*topicHandler),
 		recieveTopicHandlersByTopicNameAndProcessName: make(map[string]*topicHandler),
-		send:    make(chan *topic),
-		recieve: make(chan *topic),
-		mu:      &sync.Mutex{},
+		send:            make(chan *topic),
+		recieve:         make(chan *topic),
+		mu:              &sync.Mutex{},
+		processDuration: processDuration,
 	}
 
 	go func() {
 		for {
+			time.Sleep(time.Duration(et.processDuration) * time.Millisecond)
 			select {
 			case t := <-et.send:
 				event := &internalEvent{
@@ -97,34 +101,35 @@ func NewExternalTopic() *ExternalTopic {
 	go func() {
 		ctx := context.Background()
 		for {
-			time.Sleep(time.Duration(1) * time.Millisecond)
-			for {
-				var msg *internalEvent
-				msg = nil
-				et.mu.Lock()
-				if et.msgsRoot != nil {
-					msg = et.msgsRoot
-					et.msgsRoot = msg.next
-					if et.msgsRoot == nil {
-						et.msgsCurrent = nil
-					}
+			time.Sleep(time.Duration(et.processDuration) * time.Millisecond)
+			//			for {
+			//				time.Sleep(time.Duration(et.processDuration) * time.Millisecond)
+			var msg *internalEvent
+			msg = nil
+			et.mu.Lock()
+			if et.msgsRoot != nil {
+				msg = et.msgsRoot
+				et.msgsRoot = msg.next
+				if et.msgsRoot == nil {
+					et.msgsCurrent = nil
 				}
-				et.mu.Unlock()
-				if msg != nil {
-					switch msg.eventType {
-					case eventTypeSend:
-						err := et.ActivateTopic(ctx, msg.topic.processName, msg.topic.processID, msg.topic.topicName, msg.topic.msgs, msg.topic.vars)
-						if err != nil {
-							fmt.Printf("failed call ActivateTopic: %v\r\n", err)
-						}
-					case eventTypeRecieve:
-						err := et.RecieveTopic(ctx, msg.topic.processName, msg.topic.processID, msg.topic.topicName, msg.topic.msgs, msg.topic.vars)
-						if err != nil {
-							fmt.Printf("failed call RecieveTopic: %v\r\n", err)
-						}
+			}
+			et.mu.Unlock()
+			if msg != nil {
+				switch msg.eventType {
+				case eventTypeSend:
+					err := et.ActivateTopic(ctx, msg.topic.processName, msg.topic.processID, msg.topic.topicName, msg.topic.msgs, msg.topic.vars)
+					if err != nil {
+						fmt.Printf("failed call ActivateTopic: %v\r\n", err)
+					}
+				case eventTypeRecieve:
+					err := et.RecieveTopic(ctx, msg.topic.processName, msg.topic.processID, msg.topic.topicName, msg.topic.msgs, msg.topic.vars)
+					if err != nil {
+						fmt.Printf("failed call RecieveTopic: %v\r\n", err)
 					}
 				}
 			}
+			//			}
 		}
 	}()
 

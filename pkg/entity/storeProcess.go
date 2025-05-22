@@ -15,12 +15,22 @@ type StoreProcess struct {
 	DeletedAt *time.Time
 }
 
+/*
+type ProcessState struct {
+	FlowID    string
+	TopicName string
+}
+*/
+
 type ProcessExecutorStateItem struct {
-	ProcessID     string
-	ProcessName   string
-	State         string
-	Execute       string
-	ProcessStates []string
+	ProcessID        string
+	ProcessName      string
+	State            string
+	Execute          string
+	ProcessStates    []string
+	ProcessStateData string
+	Variables        []*Variable
+	Messages         []*Message
 }
 
 type ProcessElementData struct {

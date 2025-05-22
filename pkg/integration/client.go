@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wanderer69/flow_processor/pkg/entity"
-	pb "github.com/wanderer69/flow_processor/pkg/proto/client"
 	"go.uber.org/zap"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/wanderer69/flow_processor/pkg/entity"
+	pb "github.com/wanderer69/flow_processor/pkg/proto/client"
 )
 
 type Callback func(
@@ -67,12 +67,13 @@ type ProcessorClient struct {
 
 	durationWaitAnswer time.Duration
 
-	mu          *sync.Mutex
-	callRoot    *Call
-	callCurrent *Call
+	mu              *sync.Mutex
+	callRoot        *Call
+	callCurrent     *Call
+	processDuration int
 }
 
-func NewProcessorClient(url string, port int) *ProcessorClient {
+func NewProcessorClient(url string, port int, processDuration int, durationWaitAnswer int) *ProcessorClient {
 	result := &ProcessorClient{
 		url:                                     url,
 		port:                                    port,
@@ -84,7 +85,8 @@ func NewProcessorClient(url string, port int) *ProcessorClient {
 		startProcessResponse:                    make(chan *pb.Response),
 		send:                                    make(chan *pb.Request),
 		connectToProcessResponse:                make(chan *pb.Response),
-		durationWaitAnswer:                      10 * time.Second,
+		durationWaitAnswer:                      time.Duration(durationWaitAnswer) * time.Second, // 10
+		processDuration:                         processDuration,
 	}
 	go func() {
 		for call := range result.toProcess {
@@ -102,7 +104,7 @@ func NewProcessorClient(url string, port int) *ProcessorClient {
 
 	go func() {
 		for {
-			time.Sleep(time.Duration(5) * time.Millisecond)
+			time.Sleep(time.Duration(result.processDuration) * time.Millisecond)
 			result.mu.Lock()
 			if result.callRoot == nil {
 				result.mu.Unlock()
@@ -486,7 +488,7 @@ func (pc *ProcessorClient) Connect(processName string, connected chan bool) erro
 				return
 			}
 
-			time.Sleep(time.Duration(5) * time.Microsecond)
+			time.Sleep(time.Duration(pc.processDuration) * time.Microsecond)
 		}
 	}()
 

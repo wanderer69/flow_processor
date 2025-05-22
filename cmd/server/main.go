@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -16,9 +17,11 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 
+	"github.com/wanderer69/flow_processor/cmd/server/spa"
 	"github.com/wanderer69/flow_processor/internal/app"
 	"github.com/wanderer69/flow_processor/internal/config"
 	diagrammRepository "github.com/wanderer69/flow_processor/internal/repository/diagramm"
+	frontUserRepository "github.com/wanderer69/flow_processor/internal/repository/front_user"
 	processRepository "github.com/wanderer69/flow_processor/internal/repository/process"
 	"github.com/wanderer69/flow_processor/pkg/dao"
 )
@@ -37,6 +40,7 @@ func main() {
 		envconfig.Usage("", &cnf)
 		panic(fmt.Errorf("ошибка парсинга переменных окружения: %w", err))
 	}
+	fmt.Printf("%#v\r\n", cnf)
 
 	config := zap.NewProductionEncoderConfig()
 	if cnf.AppEnv == "dev" {
@@ -88,8 +92,9 @@ func main() {
 
 	processRepo := processRepository.NewRepository(dao)
 	diagrammRepo := diagrammRepository.NewRepository(dao)
-	application := app.NewApplication(processRepo, diagrammRepo)
-	err = application.Init(fsSPA, fsVersion, cnf)
+	frontUserRepo := frontUserRepository.NewRepository(dao)
+	application := app.NewApplication(processRepo, diagrammRepo, frontUserRepo)
+	err = application.Init(spa.SPA, fsVersion, cnf)
 	if err != nil {
 		panic(fmt.Errorf("error application initialization: %w", err))
 	}
@@ -108,7 +113,21 @@ func main() {
 
 	zapLogger.Info("Service started")
 	for {
+		ticker := time.NewTicker(time.Duration(10) * time.Second)
 		select {
+		case <-ticker.C:
+			runtime.Gosched()
+			// Получаем стэк для каждой горутины
+			var buf []byte
+			for i := 0; i < runtime.NumCPU(); i++ {
+				n := runtime.Stack(buf, true)
+				if n > 2 {
+					// Показываем стэк, можно выводить в файл или обрабатывать как угодно
+					fmt.Printf("%s\r\n", string(buf))
+				}
+				buf = buf[:0]
+			}
+
 		case <-sigCh:
 			return
 		case <-ctx.Done():

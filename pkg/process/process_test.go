@@ -40,9 +40,9 @@ func TestProcessSimpleI(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	testClient := NewTestClient(topicClient)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
@@ -55,7 +55,7 @@ func TestProcessSimpleI(t *testing.T) {
 	currentProcessName := "test_process"
 	topic1 := "topic1"
 	topic2 := "topic2"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	/*
 	   тестовая последовательность
@@ -302,9 +302,9 @@ func TestProcessSimpleII(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	testClient := NewTestClient(topicClient)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
@@ -318,7 +318,7 @@ func TestProcessSimpleII(t *testing.T) {
 	currentProcessName := "test_process"
 	topic1 := "topic1"
 	topic2 := "topic2"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	/*
 	   тестовая последовательность
@@ -582,9 +582,9 @@ func TestProcessSimpleIII(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	testClient := NewTestClient(topicClient)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
@@ -601,7 +601,7 @@ func TestProcessSimpleIII(t *testing.T) {
 	topic3 := "topic3"
 	topic4 := "topic4"
 	topic5 := "topic5"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	/*
 	   тестовая последовательность
@@ -1024,9 +1024,9 @@ func TestProcessSimpleIV(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	testClient := NewTestClient(topicClient)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
@@ -1043,7 +1043,7 @@ func TestProcessSimpleIV(t *testing.T) {
 	topic3 := "topic3"
 	topic4 := "topic4"
 	topic5 := "topic5"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	/*
 	   тестовая последовательность
@@ -1468,9 +1468,9 @@ func TestProcessSimpleV(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	testClient := NewTestClient(topicClient)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
@@ -1484,7 +1484,7 @@ func TestProcessSimpleV(t *testing.T) {
 	currentProcessName := "test_process"
 	topic1 := "topic1"
 	topic2 := "topic2"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	msgSend1 := &entity.Message{
 		Name: "msgSend1",
@@ -1886,9 +1886,9 @@ func TestProcessSimpleVI(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	testClient := NewTestClient(topicClient)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
@@ -1902,7 +1902,7 @@ func TestProcessSimpleVI(t *testing.T) {
 	currentProcessName := "Тест1"
 	topic1 := "ExecProcess1"
 	topic2 := "ExecProcess2"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	var ps []*entity.Process
 
@@ -2034,9 +2034,9 @@ func TestProcessSimpleIProcessRestartedI(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	testClient := NewTestClient(topicClient)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
@@ -2050,7 +2050,7 @@ func TestProcessSimpleIProcessRestartedI(t *testing.T) {
 	currentProcessName := "test_process"
 	topic1 := "topic1"
 	topic2 := "topic2"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	/*
 	   тестовая последовательность
@@ -2300,9 +2300,9 @@ func TestProcessSimpleIProcessRestartedII(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 
-	topicClient := externaltopic.NewExternalTopic()
-	timerClient := timer.NewTimer()
-	externalActivationClient := externalactivation.NewExternalActivation()
+	topicClient := externaltopic.NewExternalTopic(1)
+	timerClient := timer.NewTimer(1)
+	externalActivationClient := externalactivation.NewExternalActivation(1)
 	testClient := NewTestClient(topicClient)
 	camunda7ConvertorClient := camunda7convertor.NewConverterClient()
 	internalFormatClient := internalformat.NewInternalFormat()
@@ -2316,7 +2316,7 @@ func TestProcessSimpleIProcessRestartedII(t *testing.T) {
 	currentProcessName := "test_process"
 	topic1 := "topic1"
 	topic2 := "topic2"
-	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop)
+	pe := NewProcessExecutor(topicClient, timerClient, externalActivationClient, storeClient, stop, 1)
 
 	/*
 	   тестовая последовательность
