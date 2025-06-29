@@ -4,5 +4,7 @@ import (
 	"embed"
 )
 
-//go:embed index.html wasm_exec.js test.wasm wasm_exec.js
+// index.html client.wasm wasmexec.js style.css vars.css
+//
+//go:embed *
 var SPA embed.FS

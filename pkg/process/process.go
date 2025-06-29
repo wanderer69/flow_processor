@@ -232,9 +232,7 @@ func NewProcessExecutor(
 				case <-ticker.C:
 					//default:
 				}
-				//	for {
 				var msg *InternalEvent
-				//msg = nil
 				muEventType.Lock()
 				pe.mu.Lock()
 				if pe.msgsRoot != nil {
@@ -334,7 +332,6 @@ func NewProcessExecutor(
 						}
 					}
 				}
-				//				}
 			}
 		}()
 	}

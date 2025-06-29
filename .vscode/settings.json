@@ -1,3 +1,9 @@
 {
-    "makefile.configureOnOpen": false
+    "makefile.configureOnOpen": false,
+    "gopls": {
+        "build.env": {
+            "GOOS": "js",
+            "GOARCH": "wasm"
+        }
+    }
 }
