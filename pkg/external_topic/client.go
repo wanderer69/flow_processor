@@ -102,8 +102,6 @@ func NewExternalTopic(processDuration int) *ExternalTopic {
 		ctx := context.Background()
 		for {
 			time.Sleep(time.Duration(et.processDuration) * time.Millisecond)
-			//			for {
-			//				time.Sleep(time.Duration(et.processDuration) * time.Millisecond)
 			var msg *internalEvent
 			msg = nil
 			et.mu.Lock()
@@ -129,7 +127,6 @@ func NewExternalTopic(processDuration int) *ExternalTopic {
 					}
 				}
 			}
-			//			}
 		}
 	}()
 

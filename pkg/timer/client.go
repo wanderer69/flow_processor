@@ -75,7 +75,6 @@ func NewTimer(processDuration int) *Timer {
 		ctx := context.Background()
 		for {
 			time.Sleep(time.Duration(et.processDuration) * time.Millisecond)
-			//				for {
 			var msg *internalEvent
 			msg = nil
 			et.mu.Lock()
@@ -97,7 +96,6 @@ func NewTimer(processDuration int) *Timer {
 				}
 			}
 		}
-		//			}
 	}()
 
 	return et

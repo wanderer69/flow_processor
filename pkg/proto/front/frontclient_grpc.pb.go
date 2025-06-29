@@ -19,8 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	FrontClientConnector_Login_FullMethodName   = "/frontprocessorclient.FrontClientConnector/Login"
-	FrontClientConnector_Connect_FullMethodName = "/frontprocessorclient.FrontClientConnector/Connect"
+	FrontClientConnector_Login_FullMethodName            = "/frontprocessorclient.FrontClientConnector/Login"
+	FrontClientConnector_Connect_FullMethodName          = "/frontprocessorclient.FrontClientConnector/Connect"
+	FrontClientConnector_Ping_FullMethodName             = "/frontprocessorclient.FrontClientConnector/Ping"
+	FrontClientConnector_ListProcesses_FullMethodName    = "/frontprocessorclient.FrontClientConnector/ListProcesses"
+	FrontClientConnector_ListProcessFlows_FullMethodName = "/frontprocessorclient.FrontClientConnector/ListProcessFlows"
 )
 
 // FrontClientConnectorClient is the client API for FrontClientConnector service.
@@ -29,6 +32,9 @@ const (
 type FrontClientConnectorClient interface {
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	Connect(ctx context.Context, opts ...grpc.CallOption) (FrontClientConnector_ConnectClient, error)
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
+	ListProcesses(ctx context.Context, in *ListProcessesRequest, opts ...grpc.CallOption) (*ListProcessesResponse, error)
+	ListProcessFlows(ctx context.Context, in *ListProcessFlowsRequest, opts ...grpc.CallOption) (*ListProcessFlowsResponse, error)
 }
 
 type frontClientConnectorClient struct {
@@ -79,12 +85,42 @@ func (x *frontClientConnectorConnectClient) Recv() (*Response, error) {
 	return m, nil
 }
 
+func (c *frontClientConnectorClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+	out := new(PingResponse)
+	err := c.cc.Invoke(ctx, FrontClientConnector_Ping_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *frontClientConnectorClient) ListProcesses(ctx context.Context, in *ListProcessesRequest, opts ...grpc.CallOption) (*ListProcessesResponse, error) {
+	out := new(ListProcessesResponse)
+	err := c.cc.Invoke(ctx, FrontClientConnector_ListProcesses_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *frontClientConnectorClient) ListProcessFlows(ctx context.Context, in *ListProcessFlowsRequest, opts ...grpc.CallOption) (*ListProcessFlowsResponse, error) {
+	out := new(ListProcessFlowsResponse)
+	err := c.cc.Invoke(ctx, FrontClientConnector_ListProcessFlows_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FrontClientConnectorServer is the server API for FrontClientConnector service.
 // All implementations must embed UnimplementedFrontClientConnectorServer
 // for forward compatibility
 type FrontClientConnectorServer interface {
 	Login(context.Context, *LoginRequest) (*LoginResponse, error)
 	Connect(FrontClientConnector_ConnectServer) error
+	Ping(context.Context, *PingRequest) (*PingResponse, error)
+	ListProcesses(context.Context, *ListProcessesRequest) (*ListProcessesResponse, error)
+	ListProcessFlows(context.Context, *ListProcessFlowsRequest) (*ListProcessFlowsResponse, error)
 	mustEmbedUnimplementedFrontClientConnectorServer()
 }
 
@@ -97,6 +133,15 @@ func (UnimplementedFrontClientConnectorServer) Login(context.Context, *LoginRequ
 }
 func (UnimplementedFrontClientConnectorServer) Connect(FrontClientConnector_ConnectServer) error {
 	return status.Errorf(codes.Unimplemented, "method Connect not implemented")
+}
+func (UnimplementedFrontClientConnectorServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedFrontClientConnectorServer) ListProcesses(context.Context, *ListProcessesRequest) (*ListProcessesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListProcesses not implemented")
+}
+func (UnimplementedFrontClientConnectorServer) ListProcessFlows(context.Context, *ListProcessFlowsRequest) (*ListProcessFlowsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListProcessFlows not implemented")
 }
 func (UnimplementedFrontClientConnectorServer) mustEmbedUnimplementedFrontClientConnectorServer() {}
 
@@ -155,6 +200,60 @@ func (x *frontClientConnectorConnectServer) Recv() (*Request, error) {
 	return m, nil
 }
 
+func _FrontClientConnector_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FrontClientConnectorServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FrontClientConnector_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FrontClientConnectorServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FrontClientConnector_ListProcesses_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListProcessesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FrontClientConnectorServer).ListProcesses(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FrontClientConnector_ListProcesses_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FrontClientConnectorServer).ListProcesses(ctx, req.(*ListProcessesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FrontClientConnector_ListProcessFlows_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListProcessFlowsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FrontClientConnectorServer).ListProcessFlows(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FrontClientConnector_ListProcessFlows_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FrontClientConnectorServer).ListProcessFlows(ctx, req.(*ListProcessFlowsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FrontClientConnector_ServiceDesc is the grpc.ServiceDesc for FrontClientConnector service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -165,6 +264,18 @@ var FrontClientConnector_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Login",
 			Handler:    _FrontClientConnector_Login_Handler,
+		},
+		{
+			MethodName: "Ping",
+			Handler:    _FrontClientConnector_Ping_Handler,
+		},
+		{
+			MethodName: "ListProcesses",
+			Handler:    _FrontClientConnector_ListProcesses_Handler,
+		},
+		{
+			MethodName: "ListProcessFlows",
+			Handler:    _FrontClientConnector_ListProcessFlows_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -36,6 +36,7 @@ type Args struct {
 }
 
 const (
+	CTPing             string = "ping"
 	CTListProcesses    string = "list processes"
 	CTProcessEvent     string = "process event"
 	CTListProcessFlows string = "list process flows"
@@ -47,16 +48,20 @@ type Call struct {
 	CallType  string
 	Args      Args
 	next      *Call
+	Msg       string
 }
 
 type FrontClient struct {
-	url                       string
-	port                      int
+	url  string
+	port int
+	conn *grpc.ClientConn
+
 	fnProcessEventByProcessID map[string]Callback
 	idCounter                 int32
 
 	toProcess chan *Call
 
+	pingResponse             chan *pb.Response
 	listProcessesResponse    chan *pb.Response
 	listProcessFlowsResponse chan *pb.Response
 	processEventResponse     chan *pb.Response
@@ -74,16 +79,18 @@ type FrontClient struct {
 	muCalProcessFlows *sync.Mutex
 }
 
-func NewFrontClient(url string, port int) *FrontClient {
+func NewFrontClient(url string, port int, conn *grpc.ClientConn) *FrontClient {
 	result := &FrontClient{
 		url:                       url,
 		port:                      port,
+		conn:                      conn,
 		fnProcessEventByProcessID: make(map[string]Callback),
 		mu:                        &sync.Mutex{},
 		toProcess:                 make(chan *Call),
 		send:                      make(chan *pb.Request),
 		durationWaitAnswer:        10 * time.Second,
 
+		pingResponse:             make(chan *pb.Response),
 		listProcessesResponse:    make(chan *pb.Response),
 		listProcessFlowsResponse: make(chan *pb.Response),
 		processEventResponse:     make(chan *pb.Response),
@@ -121,40 +128,125 @@ func NewFrontClient(url string, port int) *FrontClient {
 			}
 			result.mu.Unlock()
 			switch call.CallType {
+			case CTPing:
+				msg := &pb.Request{
+					PingRequest: &pb.PingRequest{
+						Msg: call.Msg,
+					},
+				}
+				result.send <- msg
 			case CTListProcesses:
 				msg := &pb.Request{
-					ListProcessesRequest: &pb.ListProcessesRequest{
-						Token: call.Token,
-					},
+					ListProcessesRequest: &pb.ListProcessesRequest{},
 				}
 				result.send <- msg
 			case CTListProcessFlows:
 				msg := &pb.Request{
 					ListProcessFlowsRequest: &pb.ListProcessFlowsRequest{
-						Token:     call.Token,
 						ProcessId: call.ProcessID,
 					},
 				}
 				result.send <- msg
-				/*
-					case CTProcessEvent:
-						fn, ok := result.fnProcessEventByProcessID[call.Args.ProcessID]
-						if !ok {
-							fmt.Printf("Error!!!!!!!!!!!!")
-						}
-						go func() {
-							ctx := context.Background()
-							err := fn(ctx, call.Args.ProcessName, call.Args.ProcessID, call.Args.TopicName, call.Args.Messages, call.Args.Variables)
-							if err != nil {
-								fmt.Printf("failed call topic handler")
-							}
-						}()
-				*/
 			}
 		}
 	}()
 
 	return result
+}
+
+func (pc FrontClient) Pong(ctx context.Context) (bool, error) {
+	logger := zap.L()
+	logger.Info("Pong")
+
+	if !pc.muCalProcesses.TryLock() {
+		return false, fmt.Errorf("locked")
+	}
+	defer pc.muCalProcesses.Unlock()
+
+	msg := "ping"
+	pc.toProcess <- &Call{
+		Msg:      msg,
+		CallType: CTPing,
+	}
+	ticker := time.NewTicker(pc.durationWaitAnswer)
+	result := false
+	isComplete := false
+	for {
+		select {
+		case <-ticker.C:
+			return false, fmt.Errorf("timeout")
+		case resp := <-pc.pingResponse:
+			if resp.PingResponse.Msg == msg {
+				result = true
+			}
+		}
+		if isComplete {
+			break
+		}
+	}
+	return result, nil
+}
+
+func (pc FrontClient) SubscribePong(ctx context.Context, subscriber chan string) error {
+	logger := zap.L()
+	logger.Info("SubscribePong")
+
+	go func() {
+		for resp := range pc.pingResponse {
+			if resp.PingResponse != nil {
+				subscriber <- resp.PingResponse.Msg
+			}
+		}
+	}()
+	return nil
+}
+
+func (pc FrontClient) SubscribeProcessEvent(ctx context.Context, subscriber chan *Args) error {
+	logger := zap.L()
+	logger.Info("SubscribeProcessEvent")
+
+	go func() {
+		for resp := range pc.pingResponse {
+			if resp.ProcessEventResponse != nil {
+				msgs := []*entity.Message{}
+				vars := []*entity.Variable{}
+				if resp.ProcessEventResponse.ProcessFlow != nil {
+					for i := range resp.ProcessEventResponse.ProcessFlow.Messages {
+						fields := []*entity.Field{}
+						for j := range resp.ProcessEventResponse.ProcessFlow.Messages[i].Fields {
+							field := &entity.Field{
+								Name:  resp.ProcessEventResponse.ProcessFlow.Messages[i].Fields[j].Name,
+								Type:  resp.ProcessEventResponse.ProcessFlow.Messages[i].Fields[j].Type,
+								Value: resp.ProcessEventResponse.ProcessFlow.Messages[i].Fields[j].Value,
+							}
+							fields = append(fields, field)
+						}
+						msg := &entity.Message{
+							Name:   resp.ProcessEventResponse.ProcessFlow.Messages[i].Name,
+							Fields: fields,
+						}
+						msgs = append(msgs, msg)
+					}
+					for i := range resp.ProcessEventResponse.ProcessFlow.Variables {
+						varl := &entity.Variable{
+							Name:  resp.ProcessEventResponse.ProcessFlow.Variables[i].Name,
+							Type:  resp.ProcessEventResponse.ProcessFlow.Variables[i].Type,
+							Value: resp.ProcessEventResponse.ProcessFlow.Variables[i].Value,
+						}
+						vars = append(vars, varl)
+					}
+				}
+				subscriber <- &Args{
+					ProcessName: resp.ProcessEventResponse.ProcessFlow.ProcessName,
+					ProcessID:   resp.ProcessEventResponse.ProcessFlow.ProcessId,
+					Messages:    msgs,
+					Variables:   vars,
+				}
+			}
+
+		}
+	}()
+	return nil
 }
 
 type Process struct {
@@ -168,7 +260,6 @@ func (pc FrontClient) ListProcesses(ctx context.Context) ([]*Process, error) {
 	logger.Info("ListProcesses")
 	processes := []*Process{}
 
-	//TODO: поставить lock на обработку повторного нажатия аналогично кабинету
 	if !pc.muCalProcesses.TryLock() {
 		return nil, fmt.Errorf("locked")
 	}
@@ -218,7 +309,6 @@ func (pc FrontClient) ListProcessFlows(ctx context.Context, processID string) ([
 	logger := zap.L()
 	logger.Info("ListProcessFlows")
 
-	//TODO: поставить lock на обработку повторного нажатия аналогично кабинету
 	if !pc.muCalProcessFlows.TryLock() {
 		return nil, fmt.Errorf("locked")
 	}
@@ -263,13 +353,16 @@ func (pc FrontClient) ListProcessFlows(ctx context.Context, processID string) ([
 func (pc FrontClient) Login(ctx context.Context, login string, password string) (string, error) {
 	logger := zap.L()
 	logger.Info("Login")
-	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", pc.url, pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		logger.Error("can not connect with server", zap.Error(err))
-		return "", err
+	if pc.conn == nil {
+		conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", pc.url, pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			logger.Error("can not connect with server", zap.Error(err))
+			return "", err
+		}
+		pc.conn = conn
 	}
 
-	client := pb.NewFrontClientConnectorClient(conn)
+	client := pb.NewFrontClientConnectorClient(pc.conn)
 	resp, err := client.Login(context.Background(), &pb.LoginRequest{
 		Login:    login,
 		Password: password,
@@ -282,44 +375,124 @@ func (pc FrontClient) Login(ctx context.Context, login string, password string) 
 	return resp.Token, nil
 }
 
-func (pc FrontClient) LoginWeb(ctx context.Context, login string, password string) (string, error) {
+func (pc FrontClient) Ping(ctx context.Context, msg string) (string, error) {
 	logger := zap.L()
-	logger.Info("Login")
-
-	cc, err := grpc.Dial("")
-	if err != nil {
-		logger.Error("can not connect with server", zap.Error(err))
-		return "", err
+	logger.Info("Ping")
+	if pc.conn == nil {
+		conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", pc.url, pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			logger.Error("can not connect with server", zap.Error(err))
+			return "", err
+		}
+		pc.conn = conn
 	}
 
-	client := pb.NewFrontClientConnectorClient(cc)
-	resp, err := client.Login(context.Background(), &pb.LoginRequest{
-		Login:    login,
-		Password: password,
+	client := pb.NewFrontClientConnectorClient(pc.conn)
+
+	resp, err := client.Ping(context.Background(), &pb.PingRequest{
+		Msg: msg,
 	})
 	if err != nil {
 		logger.Error("login error", zap.Error(err))
 		return "", err
 	}
 
-	return resp.Token, nil
+	return resp.Msg, nil
 }
 
-func (pc *FrontClient) Connect(processName string, connected chan bool) error {
+func (pc FrontClient) GetListProcesses(ctx context.Context) ([]*Process, error) {
+	logger := zap.L()
+	logger.Info("GetListProcesses")
+	processes := []*Process{}
+
+	if pc.conn == nil {
+		conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", pc.url, pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			logger.Error("can not connect with server", zap.Error(err))
+			return nil, err
+		}
+		pc.conn = conn
+	}
+
+	client := pb.NewFrontClientConnectorClient(pc.conn)
+
+	resp, err := client.ListProcesses(ctx, &pb.ListProcessesRequest{})
+	if err != nil {
+		logger.Error("list process error", zap.Error(err))
+		return nil, err
+	}
+
+	if resp.Result == "Ok" {
+		for i := range resp.Processes {
+			process := &Process{
+				ProcessId:     resp.Processes[i].ProcessId,
+				ApplicationId: resp.Processes[i].ApplicationId,
+				State:         resp.Processes[i].State,
+			}
+			processes = append(processes, process)
+		}
+	}
+	return processes, nil
+}
+
+func (pc FrontClient) GetListProcessFlows(ctx context.Context, processID string) ([]*entity.ProcessExecutorStateItem, error) {
+	logger := zap.L()
+	logger.Info("GetListProcessFlows")
+
+	if pc.conn == nil {
+		conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", pc.url, pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			logger.Error("can not connect with server", zap.Error(err))
+			return nil, err
+		}
+		pc.conn = conn
+	}
+
+	client := pb.NewFrontClientConnectorClient(pc.conn)
+
+	resp, err := client.ListProcessFlows(ctx, &pb.ListProcessFlowsRequest{
+		ProcessId: processID,
+	})
+	if err != nil {
+		logger.Error("list process flow error", zap.Error(err))
+		return nil, err
+	}
+
+	processFlows := []*entity.ProcessExecutorStateItem{}
+	if resp.Result == "Ok" {
+		for i := range resp.ProcessFlows {
+			processFlow := &entity.ProcessExecutorStateItem{
+				ProcessID:        resp.ProcessFlows[i].ProcessId,
+				State:            resp.ProcessFlows[i].State,
+				ProcessName:      resp.ProcessFlows[i].State,
+				Execute:          resp.ProcessFlows[i].Execute,
+				ProcessStates:    resp.ProcessFlows[i].ProcessStates,
+				ProcessStateData: resp.ProcessFlows[i].Data,
+			}
+			processFlows = append(processFlows, processFlow)
+		}
+	}
+	return processFlows, nil
+}
+
+func (pc *FrontClient) Connect(ctxConn context.Context, connected chan bool) (chan bool, error) {
 	logger := zap.L()
 	logger.Info("Connect")
-	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", pc.url, pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		logger.Error("can not connect with server", zap.Error(err))
-		return err
+	if pc.conn == nil {
+		conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", pc.url, pc.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			logger.Error("can not connect with server", zap.Error(err))
+			return nil, err
+		}
+		pc.conn = conn
 	}
 
-	client := pb.NewFrontClientConnectorClient(conn)
+	client := pb.NewFrontClientConnectorClient(pc.conn)
 
-	stream, err := client.Connect(context.Background())
+	stream, err := client.Connect(ctxConn)
 	if err != nil {
 		logger.Error("open stream error", zap.Error(err))
-		return err
+		return nil, err
 	}
 
 	ctx := stream.Context()
@@ -328,6 +501,7 @@ func (pc *FrontClient) Connect(processName string, connected chan bool) error {
 	go func() {
 		for req := range pc.send {
 			if req == nil {
+				fmt.Printf("empty message\r\n")
 				if err = stream.CloseSend(); err != nil {
 					logger.Error("send", zap.Error(err))
 				}
@@ -341,6 +515,7 @@ func (pc *FrontClient) Connect(processName string, connected chan bool) error {
 				stream.SendMsg(err)
 				return
 			}
+			fmt.Printf("sended!\r\n")
 
 			time.Sleep(time.Duration(5) * time.Microsecond)
 		}
@@ -357,6 +532,9 @@ func (pc *FrontClient) Connect(processName string, connected chan bool) error {
 				logger.Error("can not receive", zap.Error(err))
 			}
 			logger.Info("received", zap.Any("response", resp))
+			if resp.PingResponse != nil {
+				pc.pingResponse <- resp
+			}
 			if resp.ListProcessesResponse != nil {
 				pc.listProcessesResponse <- resp
 			}
@@ -364,43 +542,7 @@ func (pc *FrontClient) Connect(processName string, connected chan bool) error {
 				pc.listProcessFlowsResponse <- resp
 			}
 			if resp.ProcessEventResponse != nil {
-				msgs := []*entity.Message{}
-				vars := []*entity.Variable{}
-				if resp.ProcessEventResponse.ProcessFlow != nil {
-					for i := range resp.ProcessEventResponse.ProcessFlow.Messages {
-						fields := []*entity.Field{}
-						for j := range resp.ProcessEventResponse.ProcessFlow.Messages[i].Fields {
-							field := &entity.Field{
-								Name:  resp.ProcessEventResponse.ProcessFlow.Messages[i].Fields[j].Name,
-								Type:  resp.ProcessEventResponse.ProcessFlow.Messages[i].Fields[j].Type,
-								Value: resp.ProcessEventResponse.ProcessFlow.Messages[i].Fields[j].Value,
-							}
-							fields = append(fields, field)
-						}
-						msg := &entity.Message{
-							Name:   resp.ProcessEventResponse.ProcessFlow.Messages[i].Name,
-							Fields: fields,
-						}
-						msgs = append(msgs, msg)
-					}
-					for i := range resp.ProcessEventResponse.ProcessFlow.Variables {
-						varl := &entity.Variable{
-							Name:  resp.ProcessEventResponse.ProcessFlow.Variables[i].Name,
-							Type:  resp.ProcessEventResponse.ProcessFlow.Variables[i].Type,
-							Value: resp.ProcessEventResponse.ProcessFlow.Variables[i].Value,
-						}
-						vars = append(vars, varl)
-					}
-				}
-				pc.toProcess <- &Call{
-					CallType: CTProcessEvent,
-					Args: Args{
-						ProcessName: resp.ProcessEventResponse.ProcessFlow.ProcessName,
-						ProcessID:   resp.ProcessEventResponse.ProcessFlow.ProcessId,
-						Messages:    msgs,
-						Variables:   vars,
-					},
-				}
+				pc.processEventResponse <- resp
 			}
 		}
 	}()
@@ -415,5 +557,6 @@ func (pc *FrontClient) Connect(processName string, connected chan bool) error {
 
 	connected <- true
 	<-done
-	return nil
+
+	return done, nil
 }

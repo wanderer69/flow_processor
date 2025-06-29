@@ -6,6 +6,9 @@ option go_package="../pkg/gen";
 service FrontClientConnector {
   rpc Login(LoginRequest) returns (LoginResponse) {}
   rpc Connect (stream Request) returns (stream Response) {}
+  rpc Ping(PingRequest) returns (PingResponse) {}
+  rpc  ListProcesses(ListProcessesRequest) returns (ListProcessesResponse) {}
+  rpc  ListProcessFlows(ListProcessFlowsRequest) returns (ListProcessFlowsResponse) {}
 }
 
 message LoginRequest {
@@ -19,7 +22,6 @@ message LoginResponse {
 }
 
 message ListProcessesRequest {
-  string token = 1;
 }
 
 message Process {
@@ -35,8 +37,7 @@ message ListProcessesResponse {
 }
 
 message ListProcessFlowsRequest {
-  string token = 1;
-  string process_id = 2;
+  string process_id = 1;
 }
 
 message ProcessFlow {
@@ -68,6 +69,7 @@ message Request {
   string msg = 2;
   optional ListProcessesRequest list_processes_request = 3;
   optional ListProcessFlowsRequest list_process_flows_request = 4;
+  optional PingRequest ping_request = 5;
 }
 
 message Response {
@@ -76,6 +78,7 @@ message Response {
   optional ListProcessesResponse list_processes_response = 3;
   optional ListProcessFlowsResponse list_process_flows_response = 4;
   optional ProcessEventResponse process_event_response = 5;
+  optional PingResponse ping_response = 6;
 }
 
 message Field {
@@ -93,4 +96,12 @@ message Variable {
 message Message {
   string name = 1;
   repeated Field fields = 2;
+}
+
+message PingRequest {
+  string msg = 1;
+}
+
+message PingResponse {
+  string msg = 1;
 }

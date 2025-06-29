@@ -3,7 +3,6 @@ package frontconnector
 import (
 	//"github.com/wanderer69/flow_processor/pkg/process"
 	"context"
-	"embed"
 	"fmt"
 	"io"
 	"net"
@@ -12,11 +11,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/improbable-eng/grpc-web/go/grpcweb"
-	"github.com/wanderer69/flow_processor/pkg/entity"
-	pb "github.com/wanderer69/flow_processor/pkg/proto/front"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+
+	"github.com/wanderer69/flow_processor/pkg/entity"
+	pb "github.com/wanderer69/flow_processor/pkg/proto/front"
+	wasmws "github.com/wanderer69/flow_processor/pkg/ws"
 )
 
 type Token struct {
@@ -35,6 +39,7 @@ type Server struct {
 	sessionTokensByLogin map[string]*Token
 	sessionTokensByToken map[string]*Token
 	processDuration      int
+	token                string
 }
 
 func NewServer(
@@ -53,6 +58,10 @@ func NewServer(
 	}
 }
 
+func (s *Server) GetToken() string {
+	return s.token
+}
+
 func (s *Server) Login(ctx context.Context, in *pb.LoginRequest) (*pb.LoginResponse, error) {
 	logger := zap.L()
 	logger.Info("Login")
@@ -65,6 +74,7 @@ func (s *Server) Login(ctx context.Context, in *pb.LoginRequest) (*pb.LoginRespo
 		return result, nil
 	}
 	tokenData := uuid.NewString()
+	s.token = tokenData
 	token := &Token{
 		Token:     tokenData,
 		Login:     in.Login,
@@ -78,11 +88,101 @@ func (s *Server) Login(ctx context.Context, in *pb.LoginRequest) (*pb.LoginRespo
 	return result, nil
 }
 
+func (s *Server) Ping(ctx context.Context, in *pb.PingRequest) (*pb.PingResponse, error) {
+	logger := zap.L()
+	logger.Info("Ping")
+
+	result := &pb.PingResponse{Msg: in.Msg}
+
+	return result, nil
+}
+
+func (s *Server) ListProcesses(ctx context.Context, in *pb.ListProcessesRequest) (*pb.ListProcessesResponse, error) {
+	logger := zap.L()
+	logger.Info("ListProcesses")
+
+	errorResult := ""
+	result := "Ok"
+	storeProcesses, err := s.storeClient.LoadProcessStates(ctx, s.processExecutor.GetProcessExecutor().UUID)
+	if err != nil {
+		errorResult = err.Error()
+		result = "Error"
+	}
+
+	processes := []*pb.Process{}
+	for i := range storeProcesses {
+		process := pb.Process{
+			ProcessId: storeProcesses[i].ProcessID,
+			State:     storeProcesses[i].State,
+		}
+		processes = append(processes, &process)
+	}
+	listProcessesResponse := &pb.ListProcessesResponse{
+		Processes: processes,
+		Error:     &errorResult,
+		Result:    result,
+	}
+
+	return listProcessesResponse, nil
+}
+
+func (s *Server) ListProcessFlows(ctx context.Context, in *pb.ListProcessFlowsRequest) (*pb.ListProcessFlowsResponse, error) {
+	logger := zap.L()
+	logger.Info("ListProcessFlows")
+
+	errorResult := ""
+	result := "Ok"
+	processStates, err := s.storeClient.LoadProcessStates(ctx, s.processExecutor.GetProcessExecutor().UUID)
+	if err != nil {
+		errorResult = err.Error()
+		result = "Error"
+	}
+
+	processes := []*pb.ProcessFlow{}
+
+	for i := range processStates {
+		process := pb.ProcessFlow{
+			ProcessId:   processStates[i].ProcessID,
+			State:       processStates[i].State,
+			ProcessName: processStates[i].ProcessName,
+			Execute:     processStates[i].Execute,
+			Data:        processStates[i].ProcessStateData,
+		}
+		processes = append(processes, &process)
+	}
+
+	listProcessFlowsResponse := &pb.ListProcessFlowsResponse{
+		ProcessFlows: processes,
+		Error:        &errorResult,
+		Result:       result,
+	}
+
+	return listProcessFlowsResponse, nil
+}
+
 func (s *Server) Connect(srv pb.FrontClientConnector_ConnectServer) error {
 	logger := zap.L()
 	logger.Info("Connect")
 
 	ctx := srv.Context()
+
+	sendPingResponse := func(
+		msg string,
+	) error {
+		s.idCounter += 1
+		resp := pb.Response{
+			Id:  s.idCounter,
+			Msg: "",
+			PingResponse: &pb.PingResponse{
+				Msg: msg,
+			},
+		}
+		if err := srv.Send(&resp); err != nil {
+			logger.Info("Connect: done", zap.Error(err))
+			return err
+		}
+		return nil
+	}
 
 	sendListProcessesResponse := func(
 		storeProcesses []*entity.ProcessExecutorStateItem,
@@ -116,7 +216,6 @@ func (s *Server) Connect(srv pb.FrontClientConnector_ConnectServer) error {
 	}
 
 	sendListProcessFlowsResponse := func(
-		//		ctx context.Context,
 		processStates []*entity.ProcessExecutorStateItem,
 		result string,
 		errorMsg string,
@@ -172,9 +271,19 @@ func (s *Server) Connect(srv pb.FrontClientConnector_ConnectServer) error {
 			if err := srv.Send(&resp); err != nil {
 				logger.Info("Connect: send failed", zap.Error(err))
 			}
+			logger.Info("Connect: finished")
 		default:
 		}
 
+		fmt.Printf("%#v, %v\r\n", ctx, time.Now())
+		err := srv.Send(&pb.Response{
+			Id:  int32(0) >> 1,
+			Msg: "start",
+		})
+		if err != nil {
+			logger.Info("Connect: failed send", zap.Error(err))
+			continue
+		}
 		// receive data from stream
 		req, err := srv.Recv()
 		if err == io.EOF {
@@ -182,9 +291,18 @@ func (s *Server) Connect(srv pb.FrontClientConnector_ConnectServer) error {
 			logger.Info("Connect: exit")
 			return nil
 		}
+		fmt.Printf("%#v, %v\r\n", ctx, time.Now())
 		if err != nil {
 			logger.Info("Connect: failed recieve", zap.Error(err))
 			continue
+		}
+
+		if req.PingRequest != nil {
+			err = sendPingResponse(req.PingRequest.Msg)
+			if err != nil {
+				logger.Info("Connect: failed send", zap.Error(err))
+				continue
+			}
 		}
 
 		if req.ListProcessesRequest != nil {
@@ -238,46 +356,70 @@ func ServerConnect(port int, processExecutor ProcessExecutor, storeClient StoreC
 	return nil
 }
 
-func ServerConnectWeb(port int, processExecutor ProcessExecutor, storeClient StoreClient, frontUser FrontUser, fsSPA embed.FS, processDuration int) error {
-	logger := zap.L()
-	gs := grpc.NewServer()
-	srv := NewServer(processExecutor, storeClient, frontUser, processDuration)
-	pb.RegisterFrontClientConnectorServer(gs, srv)
-	wrappedServer := grpcweb.WrapServer(gs)
+var (
+	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
+	errInvalidToken    = status.Errorf(codes.Unauthenticated, "invalid token")
+)
 
-	handler := func(resp http.ResponseWriter, req *http.Request) {
-		// Redirect gRPC and gRPC-Web requests to the gRPC-Web Websocket Proxy server
-		if req.ProtoMajor == 2 && strings.Contains(req.Header.Get("Content-Type"), "application/grpc") {
-			wrappedServer.ServeHTTP(resp, req)
-			return
-		}
-
-		// Serve the WASM client
-		wasmContentTypeSetter(http.FileServer(http.FS(fsSPA))).ServeHTTP(resp, req)
+func valid(expected string, authorization []string) bool {
+	if len(authorization) < 1 {
+		return false
 	}
-
-	addr := "localhost:10000"
-	httpsSrv := &http.Server{
-		Addr:    addr,
-		Handler: http.HandlerFunc(handler),
-		// Some security settings
-		ReadHeaderTimeout: 5 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
-
-	logger.Info("Serving on https://" + addr)
-	return httpsSrv.ListenAndServe()
+	token := strings.TrimPrefix(authorization[0], "Bearer ")
+	return token == expected
 }
 
-func wasmContentTypeSetter(fn http.Handler) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		if strings.Contains(req.URL.Path, ".wasm") {
-			w.Header().Set("content-type", "application/wasm")
-		} else {
-			if strings.Contains(req.URL.Path, ".css") {
-				w.Header().Set("content-type", "text/css")
-			}
-		}
-		fn.ServeHTTP(w, req)
+func ServerConnectWS(
+	appCtx context.Context,
+	appCancel context.CancelFunc,
+	router *http.ServeMux,
+	processExecutor ProcessExecutor,
+	storeClient StoreClient,
+	frontUser FrontUser,
+	processDuration int,
+	start chan struct{},
+) (*grpc.Server, error) {
+	logger := zap.L()
+
+	srv := NewServer(processExecutor, storeClient, frontUser, processDuration)
+
+	//Setup HTTP / Websocket server
+	wsl := wasmws.NewWebSocketListener(appCtx)
+	router.HandleFunc("/grpc-proxy", wsl.ServeHTTP)
+
+	//gRPC setup
+	creds, err := credentials.NewServerTLSFromFile("cert.pem", "key.pem")
+	if err != nil {
+		logger.Error("ServerConnectWS: failed get TSL credentials from {cert,key}.pem", zap.Error(err))
+		return nil, fmt.Errorf("failed to contruct gRPC TSL credentials from {cert,key}.pem: %w", err)
 	}
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(
+			func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+				if info.FullMethod != "/frontprocessorclient.FrontClientConnector/Login" &&
+					info.FullMethod != "/frontprocessorclient.FrontClientConnector/Ping" {
+					md, ok := metadata.FromIncomingContext(ctx)
+					if !ok {
+						return nil, errMissingMetadata
+					}
+
+					if !valid(srv.GetToken(), md["authorization"]) {
+						return nil, errInvalidToken
+					}
+				}
+				// Continue execution of handler after ensuring a valid token.
+				return handler(ctx, req)
+			}), grpc.Creds(creds))
+	pb.RegisterFrontClientConnectorServer(grpcServer, srv)
+
+	//Run gRPC server
+	go func() {
+		defer appCancel()
+		<-start
+		if err := grpcServer.Serve(wsl); err != nil {
+			logger.Error("ServerConnectWS: Failed to serve gRPC connections", zap.Error(err))
+		}
+	}()
+
+	return grpcServer, nil
 }

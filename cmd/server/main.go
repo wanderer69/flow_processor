@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 	"time"
 
@@ -64,10 +63,11 @@ func main() {
 
 	zapLogger.Info("Starting service flow processor")
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT)
-	signal.Notify(sigCh, syscall.SIGTERM)
-
+	/*
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT)
+		signal.Notify(sigCh, syscall.SIGTERM)
+	*/
 	sqlLogLevel := gLogger.Warn
 	lg := gLogger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
@@ -93,45 +93,71 @@ func main() {
 	processRepo := processRepository.NewRepository(dao)
 	diagrammRepo := diagrammRepository.NewRepository(dao)
 	frontUserRepo := frontUserRepository.NewRepository(dao)
-	application := app.NewApplication(processRepo, diagrammRepo, frontUserRepo)
-	err = application.Init(spa.SPA, fsVersion, cnf)
+	application := app.NewApplication(processRepo, diagrammRepo, frontUserRepo, cnf)
+	err = application.Init(ctx, ctxCancel, spa.SPA, fsVersion)
 	if err != nil {
 		panic(fmt.Errorf("error application initialization: %w", err))
 	}
 
-	defer func() {
-		ctxCancel()
-		signal.Stop(sigCh)
-		close(sigCh)
-	}()
+	/*
+		defer func() {
+			ctxCancel()
+			signal.Stop(sigCh)
+			close(sigCh)
+		}()
+	*/
 
-	go func() {
-		err := application.Start()
-		zapLogger.Error("failed start health-check", zap.Error(err))
-		panic(err)
-	}()
+	application.Start()
 
 	zapLogger.Info("Service started")
-	for {
-		ticker := time.NewTicker(time.Duration(10) * time.Second)
-		select {
-		case <-ticker.C:
-			runtime.Gosched()
-			// Получаем стэк для каждой горутины
-			var buf []byte
-			for i := 0; i < runtime.NumCPU(); i++ {
-				n := runtime.Stack(buf, true)
-				if n > 2 {
-					// Показываем стэк, можно выводить в файл или обрабатывать как угодно
-					fmt.Printf("%s\r\n", string(buf))
-				}
-				buf = buf[:0]
-			}
 
-		case <-sigCh:
-			return
-		case <-ctx.Done():
-			return
-		}
+	//Handle signals
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		log.Printf("INFO: Received shutdown signal: %s", <-sigs)
+		ctxCancel()
+	}()
+
+	//Shutdown
+	<-ctx.Done()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), time.Second*2)
+	defer shutdownCancel()
+
+	grpcShutdown := make(chan struct{}, 1)
+	go func() {
+		application.GrpcServer.GracefulStop()
+		grpcShutdown <- struct{}{}
+	}()
+
+	application.HttpServer.Shutdown(shutdownCtx)
+	select {
+	case <-grpcShutdown:
+	case <-shutdownCtx.Done():
+		application.GrpcServer.Stop()
 	}
+	/*
+		for {
+			ticker := time.NewTicker(time.Duration(10) * time.Second)
+			select {
+			case <-ticker.C:
+				runtime.Gosched()
+				// Получаем стэк для каждой горутины
+				var buf []byte
+				for i := 0; i < runtime.NumCPU(); i++ {
+					n := runtime.Stack(buf, true)
+					if n > 2 {
+						// Показываем стэк, можно выводить в файл или обрабатывать как угодно
+						fmt.Printf("%s\r\n", string(buf))
+					}
+					buf = buf[:0]
+				}
+
+			case <-sigCh:
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	*/
 }
