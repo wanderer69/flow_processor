@@ -12,7 +12,7 @@ require (
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.10.0
 	github.com/tetratelabs/wazero v1.8.2
-	github.com/wanderer69/js_object v0.0.0-20241214171455-11e22645e360
+	github.com/wanderer69/js_object v0.0.0-20250630171101-ba827144752f
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.72.2
 	google.golang.org/protobuf v1.36.6
